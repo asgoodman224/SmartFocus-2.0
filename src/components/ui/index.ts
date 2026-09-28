@@ -21,5 +21,6 @@ export { ScreenHeader, type ScreenHeaderProps } from './ScreenHeader';
 export { Section, type SectionProps } from './Section';
 export { SegmentedControl, type SegmentedControlProps, type SegmentOption } from './SegmentedControl';
 export { Tag, type TagProps } from './Tag';
+export { TextField, type TextFieldProps } from './TextField';
 export { Toggle, type ToggleProps } from './Toggle';
 export { Touchable, type TouchableProps } from './Touchable';

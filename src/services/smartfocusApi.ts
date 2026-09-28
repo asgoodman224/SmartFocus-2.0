@@ -1,12 +1,16 @@
 import * as mock from '@/mocks';
 import type {
+  Account,
   ActivityReport,
+  AuthResponse,
   CheckIn,
   CheckInCreate,
   DailySummary,
   DailyUsagePoint,
   DataSource,
   InsightsReport,
+  SignInRequest,
+  SignUpRequest,
   TimeRange,
 } from '@/types/models';
 
@@ -21,6 +25,37 @@ import { request } from './http';
  * to "false"; no screen code needs to change as long as the endpoints return
  * the types in `src/types/models.ts`.
  */
+
+// --- Account ---------------------------------------------------------------
+// Sign-in state (the saved token) is managed by `src/features/auth`; these
+// only make the calls.
+
+export function signUp(payload: SignUpRequest): Promise<AuthResponse> {
+  if (USE_MOCK_DATA) return mock.signUp(payload);
+  return request('/v1/auth/sign-up', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function signIn(payload: SignInRequest): Promise<AuthResponse> {
+  if (USE_MOCK_DATA) return mock.signIn(payload);
+  return request('/v1/auth/sign-in', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function signOut(): Promise<void> {
+  if (USE_MOCK_DATA) return mock.signOut();
+  return request('/v1/auth/sign-out', { method: 'POST' });
+}
+
+export function getAccount(): Promise<Account> {
+  if (USE_MOCK_DATA) return mock.getAccount();
+  return request('/v1/me');
+}
+
+export function updateTimezone(timezone: string): Promise<Account> {
+  if (USE_MOCK_DATA) return mock.updateTimezone(timezone);
+  return request('/v1/me', { method: 'PATCH', body: JSON.stringify({ timezone }) });
+}
+
+// --- Data --------------------------------------------------------------------
 
 export function getDailySummary(): Promise<DailySummary> {
   if (USE_MOCK_DATA) return mock.getDailySummary();

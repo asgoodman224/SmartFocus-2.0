@@ -122,3 +122,31 @@ export interface DataSource {
   description: string;
   status: DataSourceStatus;
 }
+
+/** GET /v1/me: the signed-in account. */
+export interface Account {
+  id: string;
+  email: string;
+  /** IANA time zone, e.g. "America/New_York". Decides what "today" means. */
+  timezone: string;
+}
+
+/** Returned by sign-up and sign-in. Send `token` as `Authorization: Bearer <token>`. */
+export interface AuthResponse {
+  token: string;
+  account: Account;
+}
+
+/** POST /v1/auth/sign-up request body. Passwords are 8–128 characters. */
+export interface SignUpRequest {
+  email: string;
+  password: string;
+  timezone: string;
+}
+
+/** POST /v1/auth/sign-in request body. `timezone` updates the account's if it changed. */
+export interface SignInRequest {
+  email: string;
+  password: string;
+  timezone?: string;
+}
