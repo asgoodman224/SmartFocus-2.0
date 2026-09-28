@@ -13,6 +13,7 @@ cd backend
 docker compose up -d                    # Postgres on localhost:5432
 uv sync                                 # install dependencies into .venv
 uv run alembic upgrade head             # create the tables
+cp .env.example .env                    # turns on the demo account for local use
 uv run python -m app.dev_seed           # optional: four weeks of sample data
 uv run uvicorn app.main:app --reload --host 0.0.0.0
 ```
@@ -35,10 +36,19 @@ EXPO_PUBLIC_USE_MOCK_DATA=false
 | `uv run alembic revision --autogenerate -m "..."` | Create a migration after changing `app/models.py` |
 | `uv run alembic upgrade head`           | Apply migrations                              |
 
+Sign in to the app as `demo@smartfocus.dev` / `smartfocus-demo` to see the sample data, or create a new account.
+
 ## Endpoints
+
+Everything except sign-up, sign-in and `/health` needs `Authorization: Bearer <token>`; without a valid token the API answers 401.
 
 | Method | Path                         | Used by                                        |
 | ------ | ---------------------------- | ---------------------------------------------- |
+| POST   | `/v1/auth/sign-up`           | Create account: `{email, password, timezone}` → `{token, account}` |
+| POST   | `/v1/auth/sign-in`           | Sign in: `{email, password, timezone?}` → `{token, account}` |
+| POST   | `/v1/auth/sign-out`          | End this device's session                      |
+| GET    | `/v1/me`                     | The signed-in account                          |
+| PATCH  | `/v1/me`                     | Update the account's time zone                 |
 | GET    | `/v1/summary/today`          | Home: today's focus score and totals           |
 | GET    | `/v1/usage/daily?days=7`     | Home: screen time per day                      |
 | GET    | `/v1/activity?range=day\|week\|month` | Activity                              |
@@ -83,8 +93,10 @@ app/
 ├── schemas.py       Request/response shapes (mirror the app's models.ts)
 ├── routers/         One file per area; thin, they call services
 ├── services/
+│   ├── auth.py      Passwords, tokens, sessions
 │   ├── reports.py   Summary, activity and insights calculations
 │   └── focus.py     The focus score formula
+├── auth_store.py    Account/session storage interface (the boundary with the database)
 └── dev_seed.py      Sample data
 migrations/          Alembic migrations
 tests/               pytest; "now" is frozen so dates are predictable
@@ -92,8 +104,9 @@ tests/               pytest; "now" is frozen so dates are predictable
 
 ## Things to know
 
-- **No sign-in yet.** Every request acts as one demo user (`app/deps.py:get_current_user`). Add real authentication before storing anyone's real data; routes don't need to change.
-- **Time zones.** Usage is stored by the user's *local* date and hour. Check-ins are stored in UTC and grouped by the user's time zone (`users.timezone`; for now it's copied from `DEMO_USER_TIMEZONE` when the demo user is first created).
+- **Accounts are kept in memory for now.** Sign-in code talks to storage only through the `AuthStore` interface in `app/auth_store.py`; the database-backed version is being built separately, and that file describes what it needs. Until then accounts are forgotten when the server restarts, and new accounts can sign in but can't save data to Postgres (the data tables expect a matching `users` row). The demo account works because the sample-data script creates its row.
+- **Sign-in details.** Passwords are hashed with Argon2id. Tokens are random; only their SHA-256 is stored, so sign-out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. There's no rate limiting yet; add it (or put the API behind something that does) before going public.
+- **Time zones.** The app sends the phone's time zone at sign-up and sign-in. Usage is stored by the user's *local* date and hour; check-ins are stored in UTC and grouped by the account's time zone.
 - **Partial days.** Today's screen time and pickups are compared with the *same hours* of the previous 7 days, not their full totals.
 - **Missing days** are skipped, not treated as zero, in averages and the focus trend.
 - **The focus score formula is a placeholder** (`app/services/focus.py`), weighted on pickups, notifications and the longest stretch without unlocking. Tune it once there's real data.

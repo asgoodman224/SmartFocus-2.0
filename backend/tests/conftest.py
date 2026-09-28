@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.config import get_settings
+from app.auth_store import AccountRecord, InMemoryAuthStore, get_auth_store
 from app.db import Base, get_session
 from app.deps import get_now
 from app.main import app
@@ -28,6 +28,7 @@ from app.models import User
 NOW = datetime(2026, 9, 15, 16, 0, tzinfo=UTC)
 TODAY = date(2026, 9, 15)
 TIMEZONE = "America/New_York"
+PASSWORD = "correct horse battery"
 
 
 @pytest.fixture
@@ -40,26 +41,66 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
             "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
         )
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    with factory() as session:
-        session.add(User(id=get_settings().demo_user_id, timezone=TIMEZONE))
-        session.commit()
-    yield factory
+    yield sessionmaker(bind=engine, expire_on_commit=False)
     Base.metadata.drop_all(engine)
     engine.dispose()
 
 
+class _TestAuthStore(InMemoryAuthStore):
+    """In-memory accounts, plus the `users` row the data tables' foreign keys expect.
+
+    Stands in until the database-backed AuthStore exists; see app/auth_store.py.
+    """
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        super().__init__()
+        self._session_factory = session_factory
+
+    def create_account(self, email: str, password_hash: str, timezone: str, **kwargs):
+        account: AccountRecord = super().create_account(email, password_hash, timezone, **kwargs)
+        with self._session_factory() as session:
+            session.add(User(id=account.id, timezone=timezone))
+            session.commit()
+        return account
+
+
 @pytest.fixture
-def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+def anon_client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+    """A client with no account signed in."""
+
     def override_session() -> Iterator[Session]:
         with session_factory() as session:
             yield session
 
+    store = _TestAuthStore(session_factory)
     app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_auth_store] = lambda: store
     app.dependency_overrides[get_now] = lambda: NOW
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def sign_up(client: TestClient, email: str, timezone: str = TIMEZONE) -> dict[str, Any]:
+    response = client.post(
+        "/v1/auth/sign-up", json={"email": email, "password": PASSWORD, "timezone": timezone}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+@pytest.fixture
+def account(anon_client: TestClient) -> dict[str, Any]:
+    """Signs up a user; its token is then sent with every request from `client`."""
+    body = sign_up(anon_client, "sam@example.com")
+    anon_client.headers["Authorization"] = f"Bearer {body['token']}"
+    return body["account"]
+
+
+@pytest.fixture
+def client(anon_client: TestClient, account: dict[str, Any]) -> TestClient:
+    """A client signed in as `account`."""
+    return anon_client
 
 
 def app_entry(

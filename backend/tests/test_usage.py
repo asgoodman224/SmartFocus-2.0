@@ -58,13 +58,13 @@ def test_summary_compares_with_same_hours_of_previous_days(client: TestClient):
 
 
 def test_has_checked_in_today_uses_local_day(
-    client: TestClient, session_factory: sessionmaker[Session]
+    client: TestClient, account: dict, session_factory: sessionmaker[Session]
 ):
     # 11:30 PM New York time on the 14th is already the 15th in UTC.
     with session_factory() as session:
         session.add(
             CheckIn(
-                user_id="demo",
+                user_id=account["id"],
                 created_at=datetime(2026, 9, 15, 3, 30, tzinfo=UTC),
                 mood=3,
                 energy=3,
