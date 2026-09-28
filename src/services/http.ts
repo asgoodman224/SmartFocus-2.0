@@ -23,7 +23,7 @@ export function setUnauthorizedHandler(handler: (() => void) | undefined) {
 }
 
 /**
- * Minimal JSON fetch wrapper for the FastAPI backend. Converts network
+ * Minimal JSON fetch wrapper for the backend. Converts network
  * failures and non-2xx responses into `ApiError` with a user-readable message.
  * Sends the saved sign-in token, if any.
  */
@@ -49,7 +49,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   }
 
   if (!response.ok) {
-    // FastAPI returns errors as { "detail": "..." } (or a list for validation errors).
+    // The backend returns errors as { "detail": "..." }.
     const body = await response.json().catch(() => null);
     const detail =
       typeof body?.detail === 'string' ? body.detail : 'Something went wrong. Please try again.';

@@ -1,10 +1,10 @@
 /**
  * Domain models shared across the app.
  *
- * These mirror the response schemas the FastAPI backend will expose as
- * Pydantic models. Field names are camelCase; on the backend, configure
- * Pydantic with `alias_generator=to_camel` (and `populate_by_name=True`) so
- * the JSON matches these types without any mapping code in the app.
+ * These mirror the JSON the backend (Node.js/Express, in `backend/`) returns.
+ * Field names are camelCase, so no mapping code is needed in the app. The
+ * backend validates the same shapes in `backend/src/validation.js`; keep the
+ * two in sync.
  *
  * Dates are ISO 8601 strings: `YYYY-MM-DD` for dates, full timestamps for
  * date-times.
