@@ -21,7 +21,7 @@ import { request } from './http';
  * Every backend call the app makes goes through this file.
  *
  * Screens import these functions and never call `fetch` or mock data
- * directly. When the FastAPI backend is ready, set EXPO_PUBLIC_USE_MOCK_DATA
+ * directly. To use the real backend, set EXPO_PUBLIC_USE_MOCK_DATA
  * to "false"; no screen code needs to change as long as the endpoints return
  * the types in `src/types/models.ts`.
  */

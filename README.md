@@ -2,7 +2,7 @@
 
 SmartFocus uses smartphone behavioral data (app usage, pickups, notifications) and short self check-ins to help people understand patterns in their digital habits, focus and wellbeing.
 
-This repository currently contains the **mobile frontend** (iOS and Android), built with React Native, Expo, TypeScript and Expo Router. The backend (Python, FastAPI, Pydantic, SQLAlchemy, PostgreSQL) is not built yet; the app runs on realistic mock data until it is.
+This repository currently contains the **mobile frontend** (iOS and Android), built with React Native, Expo, TypeScript and Expo Router. By default it runs on realistic mock data, so it works without the backend (Node.js/Express, in `backend/` on the `backend` branch).
 
 ## Getting started
 
@@ -38,7 +38,7 @@ src/
 ├── services/       API layer: the only code that talks to the backend
 ├── mocks/          Mock backend responses used until the API exists
 ├── hooks/          useAsync (loading / error / refresh) and focus helpers
-├── types/          Domain models, mirroring the future Pydantic schemas
+├── types/          Domain models, matching the backend's JSON
 ├── constants/      Shared display metadata (e.g. usage categories)
 └── utils/          Formatting helpers (durations, dates)
 ```
@@ -85,10 +85,10 @@ const createStyles = (theme: Theme) =>
 
 All data flows through `src/services/smartfocusApi.ts`, which returns the types in `src/types/models.ts`.
 
-1. Implement the endpoints listed in `smartfocusApi.ts` in FastAPI, returning those shapes. Use Pydantic's `alias_generator=to_camel` so JSON keys are camelCase.
+1. Start the backend (see `backend/README.md`; it runs on port 3000).
 2. Create a `.env` file:
    ```
-   EXPO_PUBLIC_API_URL=http://<your-computer-LAN-IP>:8000
+   EXPO_PUBLIC_API_URL=http://<your-computer-LAN-IP>:3000
    EXPO_PUBLIC_USE_MOCK_DATA=false
    ```
 3. Restart `npx expo start`. No screen code needs to change.
