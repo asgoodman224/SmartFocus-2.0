@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete
 
 from app.db import SessionLocal
-from app.deps import get_current_user
-from app.models import AppUsage, CheckIn, DataSourceSetting, UsageDay, UsageHour
+from app.models import AppUsage, CheckIn, DataSourceSetting, UsageDay, UsageHour, User
+from app.services.auth import DEMO_ACCOUNT_ID, DEMO_EMAIL, DEMO_PASSWORD
 from app.services.reports import local_today
 
 DAYS = 28
@@ -50,7 +50,11 @@ NOTES = [
 def seed() -> None:
     rng = random.Random(42)
     with SessionLocal() as session:
-        user = get_current_user(session)
+        # The demo account (DEMO_ACCOUNT=true) signs in as this user.
+        user = session.get(User, DEMO_ACCOUNT_ID)
+        if user is None:
+            user = User(id=DEMO_ACCOUNT_ID, timezone="America/New_York")
+            session.add(user)
         tz = ZoneInfo(user.timezone)
         now = datetime.now(UTC)
         today = local_today(user, now)
@@ -111,6 +115,7 @@ def seed() -> None:
 
         session.commit()
         print(f"Seeded {DAYS} days of sample data for user '{user.id}' ({user.timezone}).")
+        print(f"With DEMO_ACCOUNT=true, sign in as {DEMO_EMAIL} / {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

@@ -14,7 +14,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import schemas
-from app.models import AppUsage, CheckIn, UsageDay, UsageHour, User
+from app.auth_store import AccountRecord
+from app.models import AppUsage, CheckIn, UsageDay, UsageHour
 from app.services.focus import focus_score
 
 RANGE_DAYS: dict[schemas.TimeRange, int] = {"day": 1, "week": 7, "month": 28}
@@ -40,15 +41,15 @@ class DayStats:
 # --- Time helpers ------------------------------------------------------------
 
 
-def local_now(user: User, now: datetime) -> datetime:
+def local_now(user: AccountRecord, now: datetime) -> datetime:
     return now.astimezone(ZoneInfo(user.timezone))
 
 
-def local_today(user: User, now: datetime) -> date:
+def local_today(user: AccountRecord, now: datetime) -> date:
     return local_now(user, now).date()
 
 
-def utc_bounds(user: User, first: date, last: date) -> tuple[datetime, datetime]:
+def utc_bounds(user: AccountRecord, first: date, last: date) -> tuple[datetime, datetime]:
     """UTC [start, end) covering local days `first` through `last`."""
     tz = ZoneInfo(user.timezone)
     start = datetime.combine(first, time.min, tzinfo=tz).astimezone(UTC)
@@ -138,7 +139,9 @@ def load_day_stats(
     return stats
 
 
-def check_ins_between(session: Session, user: User, first: date, last: date) -> list[CheckIn]:
+def check_ins_between(
+    session: Session, user: AccountRecord, first: date, last: date
+) -> list[CheckIn]:
     start, end = utc_bounds(user, first, last)
     return list(
         session.scalars(
@@ -152,7 +155,7 @@ def check_ins_between(session: Session, user: User, first: date, last: date) -> 
 # --- Reports -----------------------------------------------------------------
 
 
-def daily_summary(session: Session, user: User, now: datetime) -> schemas.DailySummary:
+def daily_summary(session: Session, user: AccountRecord, now: datetime) -> schemas.DailySummary:
     today = local_today(user, now)
     stats = load_day_stats(session, user.id, today - timedelta(days=1), today)
     current = stats.get(today)
@@ -202,7 +205,7 @@ def daily_summary(session: Session, user: User, now: datetime) -> schemas.DailyS
 
 
 def daily_usage(
-    session: Session, user: User, now: datetime, days: int
+    session: Session, user: AccountRecord, now: datetime, days: int
 ) -> list[schemas.DailyUsagePoint]:
     """Screen time for the last `days` days, oldest first. Missing days are 0."""
     today = local_today(user, now)
@@ -218,7 +221,7 @@ def daily_usage(
 
 
 def activity_report(
-    session: Session, user: User, now: datetime, range_: schemas.TimeRange
+    session: Session, user: AccountRecord, now: datetime, range_: schemas.TimeRange
 ) -> schemas.ActivityReport:
     today = local_today(user, now)
     first = today - timedelta(days=RANGE_DAYS[range_] - 1)
@@ -296,7 +299,7 @@ def activity_report(
 
 
 def insights_report(
-    session: Session, user: User, now: datetime, range_: schemas.TimeRange
+    session: Session, user: AccountRecord, now: datetime, range_: schemas.TimeRange
 ) -> schemas.InsightsReport:
     today = local_today(user, now)
     length = RANGE_DAYS[range_]

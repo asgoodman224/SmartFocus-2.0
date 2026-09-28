@@ -14,11 +14,12 @@ class Settings(BaseSettings):
     # this is for `expo start --web` during development.
     cors_origins: list[str] = ["http://localhost:8081"]
 
-    # There is no sign-in yet, so every request acts as this one user.
-    # See `app/deps.py:get_current_user`.
-    demo_user_id: str = "demo"
-    # IANA time zone for the demo user. Decides what "today" means.
-    demo_user_timezone: str = "America/New_York"
+    # How long a sign-in lasts before the app must sign in again.
+    session_days: int = 90
+
+    # Local development only: adds a demo@smartfocus.dev / smartfocus-demo
+    # account, matching the sample data from `app/dev_seed.py`.
+    demo_account: bool = False
 
 
 @lru_cache

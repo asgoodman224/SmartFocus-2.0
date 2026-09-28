@@ -9,9 +9,11 @@ TypeScript distinguishes `field?: T` (key may be absent) from `field: T | null`.
 """
 
 from datetime import UTC, date, datetime
+from functools import cache
 from typing import Annotated, Literal
+from zoneinfo import available_timezones
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -36,6 +38,58 @@ def _as_utc(value: datetime) -> datetime:
 
 
 UtcDateTime = Annotated[datetime, AfterValidator(_as_utc)]
+
+
+# --- Accounts ----------------------------------------------------------------
+
+
+@cache
+def _known_timezones() -> frozenset[str]:
+    return frozenset(available_timezones())
+
+
+def _check_timezone(value: str) -> str:
+    if value not in _known_timezones():
+        raise ValueError("must be an IANA time zone name, e.g. America/New_York")
+    return value
+
+
+TimeZoneName = Annotated[str, AfterValidator(_check_timezone)]
+# Lowercased so "Sam@Example.com" and "sam@example.com" are the same account.
+Email = Annotated[EmailStr, AfterValidator(str.lower)]
+
+
+class SignUpRequest(CamelModel):
+    """POST /v1/auth/sign-up"""
+
+    email: Email
+    password: str = Field(min_length=8, max_length=128)
+    timezone: TimeZoneName
+
+
+class SignInRequest(CamelModel):
+    """POST /v1/auth/sign-in. `timezone` updates the account's if the phone has moved."""
+
+    email: Email
+    password: str = Field(max_length=128)
+    timezone: TimeZoneName | None = None
+
+
+class Account(CamelModel):
+    id: str
+    email: str
+    timezone: str
+
+
+class AccountUpdate(CamelModel):
+    """PATCH /v1/me"""
+
+    timezone: TimeZoneName
+
+
+class AuthResponse(CamelModel):
+    token: str
+    account: Account
 
 
 # --- Summary and usage -------------------------------------------------------
