@@ -27,7 +27,8 @@ Scan the QR code with Expo Go (Android) or the Camera app (iOS).
 ```
 src/
 ├── app/            Routes (Expo Router). Keep these thin: they only render a screen.
-│   ├── _layout.tsx         Root providers, status bar, navigation theme
+│   ├── _layout.tsx         Root providers, status bar, navigation theme, sign-in guard
+│   ├── sign-in.tsx         Sign in / create account
 │   └── (tabs)/             Bottom tabs: Home, Insights, Activity, Check-In, Settings
 ├── features/       One folder per screen, plus components used only by that screen
 ├── components/
@@ -91,3 +92,9 @@ All data flows through `src/services/smartfocusApi.ts`, which returns the types 
    EXPO_PUBLIC_USE_MOCK_DATA=false
    ```
 3. Restart `npx expo start`. No screen code needs to change.
+
+## Sign-in
+
+The app opens on a sign-in / create-account screen (`src/features/auth`) until someone signs in. `AuthProvider` keeps the session: the API token is stored with `expo-secure-store` on phones (`localStorage` on web), sent with every request by `src/services/http.ts`, and cleared if the server rejects it. The phone's time zone is sent at sign-in so "today" matches the user's clock. With mock data on, any email and password work.
+
+The routes in `src/app/_layout.tsx` use `Stack.Protected`, so signed-out users can only reach `sign-in` and signed-in users can't go back to it.

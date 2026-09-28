@@ -3,13 +3,16 @@ import { StatusBar } from 'expo-status-bar';
 import { useMemo } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { ThemeProvider, useTheme } from '@/theme';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <RootNavigator />
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
@@ -17,6 +20,7 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { scheme, colors } = useTheme();
+  const { status } = useAuth();
 
   // Feeds our palette to the navigator so its backgrounds (and screen
   // transitions) match the app instead of flashing white in dark mode.
@@ -35,11 +39,20 @@ function RootNavigator() {
     };
   }, [scheme, colors]);
 
+  // Reading the saved sign-in token takes a moment; render nothing until then.
+  if (status === 'loading') return null;
+  const signedIn = status === 'signedIn';
+
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
-        <Stack.Screen name="(tabs)" />
+        <Stack.Protected guard={signedIn}>
+          <Stack.Screen name="(tabs)" />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
       </Stack>
     </NavigationThemeProvider>
   );

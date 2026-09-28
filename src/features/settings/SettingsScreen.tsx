@@ -15,6 +15,7 @@ import {
   type IconName,
   type SegmentOption,
 } from '@/components/ui';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { useAsync } from '@/hooks/useAsync';
 import { api } from '@/services';
 import { USE_MOCK_DATA } from '@/services/config';
@@ -57,6 +58,7 @@ function confirmDeleteData() {
 
 export default function SettingsScreen() {
   const { preference, setPreference } = useThemePreference();
+  const { account, signOut } = useAuth();
   const dataSources = useAsync(() => api.getDataSources());
 
   // Local only for now; these will be saved to the user's profile via the API.
@@ -128,6 +130,17 @@ export default function SettingsScreen() {
             onPress={() => showNotAvailableYet('Export data')}
           />
           <ListRow icon="trash-outline" title="Delete my data" destructive onPress={confirmDeleteData} />
+        </ListGroup>
+      </Section>
+
+      <Section title="Account">
+        <ListGroup>
+          <ListRow
+            icon="person-circle-outline"
+            title={account?.email ?? 'Signed in'}
+            subtitle={account ? `Time zone: ${account.timezone}` : undefined}
+          />
+          <ListRow icon="log-out-outline" title="Sign out" destructive onPress={() => void signOut()} />
         </ListGroup>
       </Section>
 
