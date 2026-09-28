@@ -112,6 +112,8 @@ const styles = StyleSheet.create({
   label: {
     // Wider than a dense slot on purpose, so labels like "12 PM" aren't clipped.
     width: 52,
+    // react-native-web caps single-line text at its container's width; undo that.
+    maxWidth: 52,
     textAlign: 'center',
   },
 });
