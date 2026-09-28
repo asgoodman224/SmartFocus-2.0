@@ -93,6 +93,10 @@ All data flows through `src/services/smartfocusApi.ts`, which returns the types 
    ```
 3. Restart `npx expo start`. No screen code needs to change.
 
+## Collecting phone data
+
+The app doesn't read real usage data yet. [`docs/phone-data-collection.md`](docs/phone-data-collection.md) covers what Android and iOS allow, the approvals involved, and a phased plan.
+
 ## Sign-in
 
 The app opens on a sign-in / create-account screen (`src/features/auth`) until someone signs in. `AuthProvider` keeps the session: the API token is stored with `expo-secure-store` on phones (`localStorage` on web), sent with every request by `src/services/http.ts`, and cleared if the server rejects it. The phone's time zone is sent at sign-in so "today" matches the user's clock. With mock data on, any email and password work.
