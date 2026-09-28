@@ -1,0 +1,43 @@
+name: Backend
+
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smartfocus
+          POSTGRES_PASSWORD: smartfocus
+          POSTGRES_DB: smartfocus
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://smartfocus:smartfocus@localhost:5432/smartfocus
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - name: Migrations apply and match the models
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+      - name: Tests (SQLite)
+        run: uv run pytest
+      - name: Tests (Postgres)
+        run: |
+          PGPASSWORD=smartfocus psql -h localhost -U smartfocus -c 'CREATE DATABASE smartfocus_test'
+          TEST_DATABASE_URL=postgresql+psycopg://smartfocus:smartfocus@localhost:5432/smartfocus_test uv run pytest
