@@ -1,1 +1,27 @@
-Users:
+SMARTFOCUS DATABASE - DATA DICTIONARY
+Database: smartfocus (MySQL)
+Note: log tables are placeholders and will gain columns as the team decides what to track.
+
+users
+  user_id         INT, primary key, auto-increment
+  username        VARCHAR(50), unique, required
+  email           VARCHAR(255), unique, required
+  password_hash   VARCHAR(255), hashed password (never plain text), required
+  created_at      TIMESTAMP, set automatically when the account is made
+
+devices (one user can have many devices)
+  device_id       INT, primary key, auto-increment
+  user_id         INT, links to users.user_id
+  platform        ENUM('ios', 'android')
+
+All log tables below share these columns:
+  log_id          INT, primary key, auto-increment
+  user_id         INT, links to users.user_id
+  log_date        DATE, the day the data is for
+
+sleep_logs        sleep_minutes (INT): minutes slept
+activity_logs     steps (INT): step count
+exercise_logs     duration_minutes (INT): minutes of exercise
+mobility_logs     distance_miles (DECIMAL 6,2): miles traveled
+social_logs       interaction_count (INT): number of social interactions
+cognition_logs    mood_score (TINYINT): mood rating
