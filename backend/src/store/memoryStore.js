@@ -16,6 +16,7 @@ function createMemoryStore() {
   const checkIns = new Map(); // accountId → CheckIn[]
   const dataSources = new Map(); // accountId → { sourceId: status }
   const usageDays = new Map(); // accountId → Map(date → UsageDay)
+  const healthDays = new Map(); // accountId → Map(date → HealthDay)
 
   const listFor = (map, accountId, empty) => {
     if (!map.has(accountId)) map.set(accountId, empty());
@@ -62,7 +63,10 @@ function createMemoryStore() {
 
     async createCheckIn(accountId, fields) {
       const checkIn = { id: newId(), ...fields };
+      // Optional fields are left out rather than stored as empty.
       if (!checkIn.note) delete checkIn.note;
+      if (checkIn.kind == null) delete checkIn.kind;
+      if (checkIn.sleepQuality == null) delete checkIn.sleepQuality;
       listFor(checkIns, accountId, () => []).push(checkIn);
       return copy(checkIn);
     },
@@ -91,6 +95,15 @@ function createMemoryStore() {
 
     async getUsageDays(accountId, firstDate, lastDate) {
       const days = listFor(usageDays, accountId, () => new Map());
+      return copy([...days.values()].filter((d) => d.date >= firstDate && d.date <= lastDate));
+    },
+
+    async replaceHealthDay(accountId, day) {
+      listFor(healthDays, accountId, () => new Map()).set(day.date, copy(day));
+    },
+
+    async getHealthDays(accountId, firstDate, lastDate) {
+      const days = listFor(healthDays, accountId, () => new Map());
       return copy([...days.values()].filter((d) => d.date >= firstDate && d.date <= lastDate));
     },
   };

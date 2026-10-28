@@ -22,8 +22,17 @@
  * @typedef {{ tokenHash: string, accountId: string, createdAt: Date, expiresAt: Date }} Session
  *   `tokenHash` is a 64-character hex SHA-256 (the token itself is never stored).
  *
- * @typedef {{ id: string, createdAt: Date, mood: number, energy: number, focus: number, note?: string }} CheckIn
- *   Ratings are 1–5. `note` is at most 280 characters, absent when empty.
+ * @typedef {'morning' | 'midday' | 'evening' | 'anytime'} CheckInKind
+ * @typedef {{
+ *   id: string, createdAt: Date, mood: number, energy: number, focus: number,
+ *   note?: string, kind?: CheckInKind, sleepQuality?: number
+ * }} CheckIn
+ *   Ratings (mood, energy, focus, sleepQuality) are 1–5. `note` is at most
+ *   280 characters. `note`, `kind` and `sleepQuality` are optional: absent
+ *   (not null) when not given, so store them as nullable columns and leave
+ *   them out of the returned object when NULL. `createdAt` is when the user
+ *   checked in on the phone, which may be up to 30 days before the upload
+ *   (offline phones), so it is set by the caller, not by the database.
  *
  * @typedef {'appUsage' | 'notifications' | 'motion'} DataSourceId
  * @typedef {'connected' | 'notConnected' | 'unavailable'} DataSourceStatus
@@ -35,6 +44,16 @@
  *   `hour` is 0–23 in the user's local time.
  * @typedef {{ date: string, longestFocusMinutes: number, hours: UsageHour[] }} UsageDay
  *   One uploaded day. Uploading a date again replaces it entirely.
+ *
+ * @typedef {{
+ *   date: string, sleepMinutes: number | null, steps: number | null,
+ *   exerciseMinutes: number | null, distanceMeters: number | null
+ * }} HealthDay
+ *   One local day of health data from the phone. Every value is a
+ *   non-negative integer, or null when the phone had no data for it (keep
+ *   null distinct from 0). `sleepMinutes` and `exerciseMinutes` are 0–1440;
+ *   `distanceMeters` is whole meters. Uploading a date again replaces the
+ *   whole record, nulls included.
  *
  * ---------------------------------------------------------------------------
  * Methods (all return Promises)
@@ -52,8 +71,9 @@
  *   deleteSession(tokenHash)                   → void   (missing is not an error)
  *
  * Check-ins
- *   createCheckIn(accountId, { createdAt, mood, energy, focus, note? }) → CheckIn (generates the id)
- *   listCheckIns(accountId, limit)             → CheckIn[]  newest first
+ *   createCheckIn(accountId, { createdAt, mood, energy, focus, note?, kind?, sleepQuality? })
+ *       → CheckIn (generates the id; optional fields may be undefined)
+ *   listCheckIns(accountId, limit)             → CheckIn[]  newest createdAt first
  *   listCheckInsBetween(accountId, start, end) → CheckIn[]  createdAt in [start, end)
  *
  * Data sources
@@ -63,6 +83,10 @@
  * Usage
  *   replaceUsageDay(accountId, day)            → void   (day: UsageDay; replaces that date)
  *   getUsageDays(accountId, firstDate, lastDate) → UsageDay[]  dates in [first, last], any order
+ *
+ * Health
+ *   replaceHealthDay(accountId, day)           → void   (day: HealthDay; replaces that date)
+ *   getHealthDays(accountId, firstDate, lastDate) → HealthDay[]  dates in [first, last], any order
  *
  * Every per-user record belongs to the account id.
  */

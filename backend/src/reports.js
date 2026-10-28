@@ -1,5 +1,5 @@
 /**
- * Builds the read-only reports (summary, activity, insights) from stored days.
+ * Builds the read-only reports (summary, activity, insights, health) from stored days.
  *
  * All windows are in the user's local calendar days and end on (and include)
  * "today". Days with no uploaded usage are treated as missing, not as zero,
@@ -102,6 +102,20 @@ async function dailyUsage(store, account, now, days) {
     date,
     screenTimeMinutes: stats[date] ? toMinutes(stats[date].screenSeconds) : 0,
   }));
+}
+
+const NO_HEALTH_DATA = { sleepMinutes: null, steps: null, exerciseMinutes: null, distanceMeters: null };
+
+/** Health data for the last `days` days, oldest first. Missing days and values are null. */
+async function dailyHealth(store, account, now, days) {
+  const today = time.localToday(account.timezone, now);
+  const first = time.addDays(today, -(days - 1));
+  const stored = await store.getHealthDays(account.id, first, today);
+  const byDate = Object.fromEntries(stored.map((day) => [day.date, day]));
+  return time.dateRange(first, today).map((date) => {
+    const { sleepMinutes, steps, exerciseMinutes, distanceMeters } = byDate[date] ?? NO_HEALTH_DATA;
+    return { date, sleepMinutes, steps, exerciseMinutes, distanceMeters };
+  });
 }
 
 async function activityReport(store, account, now, range) {
@@ -213,4 +227,4 @@ async function insightsReport(store, account, now, range) {
   };
 }
 
-module.exports = { dailySummary, dailyUsage, activityReport, insightsReport };
+module.exports = { dailySummary, dailyUsage, dailyHealth, activityReport, insightsReport };

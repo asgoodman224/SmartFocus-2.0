@@ -32,7 +32,7 @@ EXPO_PUBLIC_USE_MOCK_DATA=false
 
 ## Storage (MySQL)
 
-**Data is kept in memory for now and lost when the server stops.** The database side is being built separately. The API only talks to storage through one interface, described in [`src/store/index.js`](src/store/index.js): accounts, sessions, check-ins, data-source settings and uploaded usage days, with the exact shapes and methods.
+**Data is kept in memory for now and lost when the server stops.** The database side is being built separately. The API only talks to storage through one interface, described in [`src/store/index.js`](src/store/index.js): accounts, sessions, check-ins, data-source settings and uploaded usage and health days, with the exact shapes and methods.
 
 To connect MySQL, write `createMysqlStore(db)` implementing those methods (e.g. with the `mysql2` connection from `db.js` on the `database-api` branch), use it in `src/server.js`, and point `test/helpers.js:makeStore` at it so the test suite checks it. Nothing else needs to change. The report calculations (summary, charts, focus score) work on the day records the store returns, so the store only saves and loads data.
 
@@ -51,11 +51,13 @@ Everything except sign-up, sign-in and `/health` needs `Authorization: Bearer <t
 | GET    | `/v1/usage/daily?days=7`    | Home: screen time per day                        |
 | GET    | `/v1/activity?range=day\|week\|month` | Activity                               |
 | GET    | `/v1/insights?range=week\|month` | Insights, Home                              |
-| GET    | `/v1/check-ins?limit=5`     | Check-In: recent history                         |
-| POST   | `/v1/check-ins`             | Check-In: save                                   |
+| GET    | `/v1/check-ins?limit=5`     | Check-In: recent history, newest `createdAt` first |
+| POST   | `/v1/check-ins`             | Check-In: save (also uploads offline check-ins later) |
 | GET    | `/v1/data-sources`          | Settings                                         |
 | PUT    | `/v1/data-sources/{id}`     | Phone reports a permission change (not wired up in the app yet) |
 | PUT    | `/v1/usage/days/{date}`     | Phone uploads a day of usage (not wired up in the app yet) |
+| GET    | `/v1/health/daily?days=7`   | Sleep, steps, exercise and distance per day      |
+| PUT    | `/v1/health/days/{date}`    | Phone uploads a day of health data               |
 | GET    | `/health`                   | Liveness check                                   |
 
 ### Usage uploads
@@ -79,6 +81,41 @@ PUT /v1/usage/days/2026-09-15
 
 Each upload **replaces** that day, so the phone can re-send recent days as often as it likes and retries are safe.
 
+### Check-ins
+
+```json
+POST /v1/check-ins
+{
+  "mood": 4, "energy": 3, "focus": 5,
+  "note": "Slept well",
+  "kind": "morning",
+  "sleepQuality": 4,
+  "createdAt": "2026-09-15T07:45:00-04:00"
+}
+```
+
+`mood`, `energy` and `focus` (1–5) are required; the rest are optional, and `null` counts as not given. `kind` is `morning`, `midday`, `evening` or `anytime`; `sleepQuality` (1–5) answers "how did you sleep?". `createdAt` is when the user checked in on the phone, with a `Z` or offset; leave it out for "now". A phone that was offline can upload check-ins later with their original time, up to 30 days back (and at most 5 minutes ahead, for clock drift); anything else is a 422. The response (201) is the saved check-in with its `id`; `note`, `kind` and `sleepQuality` are left out when not given.
+
+### Health uploads
+
+The phone sends health data one local calendar day at a time. Every field is optional; a missing or `null` value means "no data that day", which is kept apart from 0:
+
+```json
+PUT /v1/health/days/2026-09-15
+{ "sleepMinutes": 450, "steps": 8200, "exerciseMinutes": 35, "distanceMeters": 6100 }
+```
+
+All values are whole numbers: `sleepMinutes` and `exerciseMinutes` 0–1440, `steps` and `distanceMeters` (meters) 0 or more. Like usage, an upload **replaces** that day completely (204), and future dates are refused.
+
+`GET /v1/health/daily?days=7` (1–90) returns one entry per day, oldest first and ending today, with `null` for days or values the phone hasn't sent:
+
+```json
+[
+  { "date": "2026-09-14", "sleepMinutes": null, "steps": null, "exerciseMinutes": null, "distanceMeters": null },
+  { "date": "2026-09-15", "sleepMinutes": 450, "steps": 8200, "exerciseMinutes": 35, "distanceMeters": 6100 }
+]
+```
+
 ## How it's organized
 
 ```
@@ -89,7 +126,7 @@ src/
 ├── routes/          One file per area; thin, they validate and call the rest
 ├── validation.js    Request shapes (zod), mirroring the app's models.ts
 ├── auth.js          Passwords (scrypt), tokens, sessions
-├── reports.js       Summary, activity and insights calculations
+├── reports.js       Summary, activity, insights and daily health calculations
 ├── focus.js         The focus score formula
 ├── time.js          Time zones and calendar days (luxon)
 ├── demoData.js      Sample data for the demo account
@@ -100,7 +137,7 @@ test/                node:test + supertest; "now" is pinned so dates are predict
 ## Things to know
 
 - **Sign-in.** Passwords are hashed with scrypt. Tokens are random, and only their SHA-256 is stored, so signing out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. There's no rate limiting yet; add it before going public.
-- **Time zones.** The app sends the phone's time zone at sign-up and sign-in. Usage is stored by the user's *local* date and hour; check-ins are timestamps grouped by the account's time zone.
+- **Time zones.** The app sends the phone's time zone at sign-up and sign-in. Usage and health data are stored by the user's *local* date (usage also by hour); check-ins are timestamps grouped by the account's time zone.
 - **Partial days.** Today's screen time and pickups are compared with the *same hours* of the previous 7 days, not their full totals.
 - **Missing days** are skipped, not treated as zero, in averages and the focus trend.
 - **The focus score formula is a placeholder** (`src/focus.js`), weighted on pickups, notifications and the longest stretch without unlocking. Tune it once there's real data.

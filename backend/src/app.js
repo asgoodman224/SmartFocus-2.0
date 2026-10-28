@@ -6,6 +6,7 @@ const auth = require('./auth');
 const authRoutes = require('./routes/auth');
 const checkInRoutes = require('./routes/checkIns');
 const dataSourceRoutes = require('./routes/dataSources');
+const healthRoutes = require('./routes/health');
 const insightRoutes = require('./routes/insights');
 const usageRoutes = require('./routes/usage');
 
@@ -36,6 +37,7 @@ function createApp({ store, now = () => new Date() }) {
   app.use('/v1/insights', insightRoutes(deps));
   app.use('/v1/check-ins', checkInRoutes(deps));
   app.use('/v1/data-sources', dataSourceRoutes(deps));
+  app.use('/v1/health', healthRoutes(deps));
 
   app.use((req, res) => res.status(404).json({ detail: 'Not found.' }));
 

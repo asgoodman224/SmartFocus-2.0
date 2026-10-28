@@ -34,6 +34,10 @@ const timezone = z.string().refine(isValidTimeZone, 'must be an IANA time zone n
 // Lowercased so "Sam@Example.com" and "sam@example.com" are the same account.
 const email = z.string().trim().pipe(z.email('must be a valid email address')).transform((e) => e.toLowerCase());
 const rating = int(1, 5);
+// The phone may send null for "not given"; either way the field is left out.
+const optional = (schema) => schema.nullish().transform((value) => value ?? undefined);
+// Health values are null when the phone has no data for that day.
+const healthValue = (min, max) => int(min, max).nullish().transform((value) => value ?? null);
 
 const schemas = {
   signUp: z.object({ email, password: z.string().min(8).max(128), timezone }),
@@ -49,6 +53,15 @@ const schemas = {
       .max(280)
       .nullish()
       .transform((note) => note?.trim() || undefined),
+    // When it happened on the phone, which may upload it later (offline).
+    // The route checks it against the current time; the default is now.
+    createdAt: optional(
+      z.iso
+        .datetime({ offset: true, message: 'must be an ISO 8601 date-time with an offset, e.g. 2026-09-15T08:30:00-04:00' })
+        .transform((iso) => new Date(iso)),
+    ),
+    kind: optional(z.enum(['morning', 'midday', 'evening', 'anytime'])),
+    sleepQuality: optional(rating),
   }),
   checkInList: z.object({ limit: queryInt(1, 100, 5) }),
 
@@ -58,6 +71,14 @@ const schemas = {
   isoDate: z.iso.date(),
   timeRange: z.object({ range: z.enum(['day', 'week', 'month']).optional() }),
   dailyUsage: z.object({ days: queryInt(1, 90, 7) }),
+  dailyHealth: z.object({ days: queryInt(1, 90, 7) }),
+
+  healthDayUpload: z.object({
+    sleepMinutes: healthValue(0, 1440),
+    steps: healthValue(0),
+    exerciseMinutes: healthValue(0, 1440),
+    distanceMeters: healthValue(0),
+  }),
 
   usageDayUpload: z.object({
     longestFocusMinutes: int(0, 1440),
