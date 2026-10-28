@@ -3,6 +3,7 @@ package com.example.smartfocus
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -325,7 +326,14 @@ fun SmartFocusApp(
                     usageAccess = dashboard?.usageAccess == true,
                     health = dashboard?.health ?: HealthStatus.Unavailable,
                     notifications = Reminders.canNotify(context),
-                    onUsage = { open(UsageReader.settingsIntent(context)) },
+                    usageBlocked = settings.openedUsageAccess,
+                    onUsage = {
+                        settings.openedUsageAccess = true
+                        open(UsageReader.settingsIntent(context))
+                    },
+                    onAppInfo = {
+                        open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                    },
                     onHealth = ::connectHealth,
                     onNotifications = ::allowNotifications,
                 )

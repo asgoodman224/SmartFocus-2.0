@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -152,6 +153,8 @@ fun GlassSheet(
                 Column(
                     Modifier
                         .weight(1f)
+                        // Shrink above the keyboard so a focused text field scrolls into view.
+                        .imePadding()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp)
                         .navigationBarsPadding()

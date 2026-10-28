@@ -39,7 +39,10 @@ fun ColumnScope.DataSourcesSheetContent(
     usageAccess: Boolean,
     health: HealthStatus,
     notifications: Boolean,
+    /** Usage access was opened before but is still off: Android may have blocked it. */
+    usageBlocked: Boolean,
     onUsage: () -> Unit,
+    onAppInfo: () -> Unit,
     onHealth: () -> Unit,
     onNotifications: () -> Unit,
 ) {
@@ -57,9 +60,16 @@ fun ColumnScope.DataSourcesSheetContent(
         connected = usageAccess,
         about = "Which apps you use and for how long, how often you unlock your phone, and how many " +
             "notifications arrive (never what they say).",
-        hint = if (usageAccess) null else "Android opens a list of apps. Find SmartFocus, switch it on, then come back.",
+        hint = when {
+            usageAccess -> null
+            usageBlocked -> "If Android said it's a restricted setting: open App info, tap ⋮ (top right), " +
+                "choose Allow restricted settings, then turn usage access on again."
+            else -> "Android opens a list of apps. Find SmartFocus, switch it on, then come back."
+        },
         action = if (usageAccess) "Manage in Settings" else "Turn on usage access",
         onAction = onUsage,
+        secondary = if (usageBlocked && !usageAccess) "Open App info" else null,
+        onSecondary = onAppInfo,
     )
     Spacer(Modifier.height(12.dp))
     SourceCard(
@@ -101,6 +111,8 @@ private fun SourceCard(
     hint: String?,
     action: String?,
     onAction: () -> Unit,
+    secondary: String? = null,
+    onSecondary: () -> Unit = {},
 ) {
     SheetCard {
         Row(Modifier.semantics(mergeDescendants = true) { }, verticalAlignment = Alignment.CenterVertically) {
@@ -120,6 +132,10 @@ private fun SourceCard(
         if (action != null) {
             Spacer(Modifier.height(14.dp))
             PillButton(action, onClick = onAction, secondary = connected)
+        }
+        if (secondary != null) {
+            Spacer(Modifier.height(10.dp))
+            PillButton(secondary, onClick = onSecondary, secondary = true)
         }
     }
 }

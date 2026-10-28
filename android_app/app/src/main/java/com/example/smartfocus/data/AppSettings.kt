@@ -51,6 +51,11 @@ class AppSettings(context: Context) {
     fun updateMidday(value: Boolean) { middayEnabled = value; prefs.edit().putBoolean("midday", value).apply() }
     fun updateName(value: String) { name = value; prefs.edit().putString("name", value.trim()).apply() }
 
+    /** Usage access settings were opened at least once (so if it's still off, it may be blocked). */
+    var openedUsageAccess: Boolean
+        get() = prefs.getBoolean("opened_usage_access", false)
+        set(value) = prefs.edit().putBoolean("opened_usage_access", value).apply()
+
     /** Times the Health Connect permission dialog was dismissed; after two, Android stops showing it. */
     var healthDenials: Int
         get() = prefs.getInt("health_denials", 0)
