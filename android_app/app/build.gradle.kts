@@ -11,7 +11,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.smartfocus"
-        minSdk = 24
+        // Health Connect needs Android 8.0+.
+        minSdk = 26
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -48,7 +49,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.health.connect)
+    implementation(libs.androidx.work.runtime)
     testImplementation(libs.junit)
+    // Android's own org.json is a stub in local unit tests.
+    testImplementation("org.json:json:20250517")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

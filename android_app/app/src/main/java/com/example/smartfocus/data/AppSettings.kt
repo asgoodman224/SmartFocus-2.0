@@ -40,11 +40,21 @@ class AppSettings(context: Context) {
     var middayEnabled by mutableStateOf(prefs.getBoolean("midday", false))
         private set
 
+    /** What Home calls you. Blank until set in Profile. */
+    var name by mutableStateOf(prefs.getString("name", "") ?: "")
+        private set
+
     fun updateHeroStyle(value: HeroStyle) { heroStyle = value; prefs.edit().putString("hero", value.name).apply() }
     fun updateReminders(value: Boolean) { remindersEnabled = value; prefs.edit().putBoolean("reminders", value).apply() }
     fun updateWake(minutes: Int) { wakeMinutes = minutes; prefs.edit().putInt("wake", minutes).apply() }
     fun updateBed(minutes: Int) { bedMinutes = minutes; prefs.edit().putInt("bed", minutes).apply() }
     fun updateMidday(value: Boolean) { middayEnabled = value; prefs.edit().putBoolean("midday", value).apply() }
+    fun updateName(value: String) { name = value; prefs.edit().putString("name", value.trim()).apply() }
+
+    /** Times the Health Connect permission dialog was dismissed; after two, Android stops showing it. */
+    var healthDenials: Int
+        get() = prefs.getInt("health_denials", 0)
+        set(value) = prefs.edit().putInt("health_denials", value).apply()
 
     /** A plain snapshot of the reminder settings, for code that runs outside Compose. */
     fun schedule() = ReminderSchedule(remindersEnabled, wakeMinutes, bedMinutes, middayEnabled)

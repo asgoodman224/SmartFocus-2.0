@@ -39,9 +39,20 @@ class WellnessTest {
     @Test fun heavyPhoneUseBottomsOut() {
         val phone = samplePhoneUse.copy(totalMinutes = 600, pickups = 400)
         val w = wellnessOf(emptyList(), phone, listOf(checkIn(1, 1, 1)))
-        assertEquals(0, w.body)
+        assertNull(w.body)
         assertEquals(0, w.digital)
         assertEquals(0, w.score)
+    }
+
+    @Test fun missingAreasAreLeftOut() {
+        // Only the check-in: the score is just mind.
+        val mindOnly = wellnessOf(emptyList(), null, listOf(checkIn(4, 4, 4)))
+        assertNull(mindOnly.body)
+        assertNull(mindOnly.digital)
+        assertEquals(75, mindOnly.score)
+        // Health metrics with nothing recorded today don't drag the score down.
+        val empty = sampleMetrics.map { it.copy(hasData = false) }
+        assertNull(wellnessOf(empty, null, emptyList()).body)
     }
 
     @Test fun weightsAddUp() {

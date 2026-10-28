@@ -72,6 +72,7 @@ import com.example.smartfocus.ui.icons.Mood
 import com.example.smartfocus.ui.icons.Phone
 import com.example.smartfocus.ui.theme.GlassEdge
 import com.example.smartfocus.ui.theme.MetricColors
+import com.example.smartfocus.ui.theme.SheetColor
 import com.example.smartfocus.ui.theme.TextPrimary
 import com.example.smartfocus.ui.theme.TextSecondary
 import com.example.smartfocus.ui.theme.TextTertiary
@@ -86,10 +87,13 @@ fun HomeScreen(
     name: String,
     heroStyle: HeroStyle,
     wellness: Wellness,
-    focusScore: Int,
-    focusWeek: List<Int>,
+    /** Focus for each of the last 7 days (null where there's no data); null without usage access. */
+    focusWeek: List<Int?>?,
     metrics: List<Metric>,
-    phone: PhoneUse,
+    phone: PhoneUse?,
+    /** Data sources still to connect, e.g. "Health Connect". */
+    missingSources: List<String>,
+    onConnect: () -> Unit,
     bedMinutes: Int,
     todayCheckIns: List<CheckIn>,
     /** e.g. "Evening check-in at 10:30 PM", or null when nothing else is due today. */
@@ -119,7 +123,7 @@ fun HomeScreen(
     val fadePx = with(density) { 28.dp.toPx() }
     val stacked = density.fontScale >= 1.5f
     val headline = headline(
-        heroStyle, wellness, focusScore, metrics, phone, bedMinutes,
+        heroStyle, wellness, focusWeek?.lastOrNull(), metrics, phone, bedMinutes,
         Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
     )
     // Today's score counts up when it first appears and whenever a check-in changes it.
@@ -166,11 +170,20 @@ fun HomeScreen(
             item(key = "checkin") {
                 CheckInPanel(todayCheckIns, nextCheckIn, onCheckIn, Modifier.entrance(0, introPlayed))
             }
-            item(key = "phone") {
-                PhonePanel(phone, onOpenPhone, Modifier.entrance(1, introPlayed))
+            if (missingSources.isNotEmpty()) {
+                item(key = "connect") {
+                    ConnectPanel(missingSources, onConnect, Modifier.entrance(1, introPlayed))
+                }
             }
-            item(key = "week") {
-                FocusWeekPanel(focusWeek, Modifier.entrance(2, introPlayed))
+            if (phone != null) {
+                item(key = "phone") {
+                    PhonePanel(phone, onOpenPhone, Modifier.entrance(1, introPlayed))
+                }
+            }
+            if (focusWeek != null) {
+                item(key = "week") {
+                    FocusWeekPanel(focusWeek, Modifier.entrance(2, introPlayed))
+                }
             }
             val rows = if (stacked) metrics.map { listOf(it) } else metrics.chunked(2)
             rows.forEachIndexed { rowIndex, row ->
@@ -190,7 +203,7 @@ fun HomeScreen(
             }
             item(key = "footer") {
                 Text(
-                    "Sample data. Health Connect, usage access and your check-ins will fill this in.",
+                    "From Health Connect, usage access and your check-ins. Kept on this phone unless you sign in to sync.",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
@@ -308,7 +321,7 @@ private fun HourlyBars(hourly: List<Int>) {
 private fun hourLabel(hour: Int): String = "${if (hour % 12 == 0) 12 else hour % 12} ${if (hour < 12) "AM" else "PM"}"
 
 @Composable
-private fun FocusWeekPanel(week: List<Int>, modifier: Modifier) {
+private fun FocusWeekPanel(week: List<Int?>, modifier: Modifier) {
     val days = lastSevenDays()
     GlassPanel(modifier.fillMaxWidth()) {
         PanelLabel("Focus this week")
@@ -320,19 +333,19 @@ private fun FocusWeekPanel(week: List<Int>, modifier: Modifier) {
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 44.dp)
-                    .semantics(mergeDescendants = true) { contentDescription = "${days[i]}, focus ${week[i]}" },
+                    .semantics(mergeDescendants = true) { contentDescription = "${days[i]}, focus ${week[i] ?: "not recorded"}" },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(days[i], color = TextPrimary, fontSize = 16.sp, modifier = Modifier.width(72.dp))
                 GradientBar(
-                    progress = week[i] / 100f,
+                    progress = (week[i] ?: 0) / 100f,
                     colors = MetricColors.Focus,
                     modifier = Modifier.weight(1f),
                     delayMillis = 200 + position * 60,
                 )
                 Text(
-                    "${week[i]}",
-                    color = TextPrimary,
+                    week[i]?.toString() ?: "--",
+                    color = if (week[i] == null) TextTertiary else TextPrimary,
                     fontSize = 16.sp,
                     textAlign = TextAlign.End,
                     modifier = Modifier.width(44.dp),
@@ -356,6 +369,40 @@ private fun MetricTile(metric: Metric, onClick: () -> Unit, modifier: Modifier) 
         Spacer(Modifier.weight(1f).heightIn(min = 14.dp))
         GradientBar(metric.progress, metric.colors)
         Spacer(Modifier.height(8.dp))
-        Text("${(metric.progress * 100).toInt()}% of ${metric.goal} goal", color = TextTertiary, fontSize = 13.sp)
+        Text(
+            if (metric.hasData) "${(metric.progress * 100).toInt()}% of ${metric.goal} goal" else "Nothing recorded today",
+            color = TextTertiary,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+@Composable
+private fun ConnectPanel(missing: List<String>, onConnect: () -> Unit, modifier: Modifier) {
+    val needsHealth = missing.any { it.startsWith("Health") }
+    val needsUsage = missing.any { it.startsWith("Usage") }
+    GlassPanel(modifier.fillMaxWidth(), onClick = onConnect, onClickLabel = "Connect your data") {
+        PanelLabel("Connect your data")
+        Spacer(Modifier.height(10.dp))
+        Text(
+            when {
+                needsHealth && needsUsage -> "See your real sleep, steps and screen time."
+                needsHealth -> "Add your sleep, steps and workouts."
+                else -> "Add your screen time, pickups and focus."
+            },
+            color = TextPrimary,
+            fontSize = 17.sp,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text("Not connected: ${missing.joinToString(" and ")}", color = TextSecondary, fontSize = 14.sp)
+        Spacer(Modifier.height(14.dp))
+        Box(
+            Modifier
+                .clip(CircleShape)
+                .background(Color.White)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
+        ) {
+            Text("Connect", color = SheetColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }

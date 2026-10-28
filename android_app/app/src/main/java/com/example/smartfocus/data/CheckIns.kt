@@ -1,6 +1,7 @@
 package com.example.smartfocus.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import org.json.JSONArray
@@ -27,23 +28,43 @@ data class CheckIn(
     /** 1–5, morning check-ins only. */
     val sleepQuality: Int? = null,
     val note: String = "",
+    /** Uploaded to the study server. */
+    val synced: Boolean = false,
 ) {
     val timeText: String get() = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timeMillis))
 }
 
 /**
- * Check-ins saved on the phone. Kept on-device for now; they'll sync to the backend
- * (POST /v1/check-ins) once sign-in is connected.
+ * Check-ins saved on the phone. When signed in, background sync uploads the ones not yet
+ * [CheckIn.synced]. Every instance reloads when another one saves, so the app and the sync
+ * worker never overwrite each other's changes.
  */
 class CheckInStore(context: Context) {
     private val prefs = context.getSharedPreferences("check_ins", Context.MODE_PRIVATE)
     val all: SnapshotStateList<CheckIn> = mutableStateListOf<CheckIn>().apply { addAll(load()) }
+    // Held in a field: SharedPreferences only keeps a weak reference to listeners.
+    private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == KEY) {
+            val fresh = load()
+            if (fresh != all.toList()) { all.clear(); all.addAll(fresh) }
+        }
+    }
+
+    init {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
 
     fun add(checkIn: CheckIn) {
         all.add(checkIn)
         // Keep the last 90 days on the phone.
         val cutoff = System.currentTimeMillis() - 90L * 24 * 60 * 60 * 1000
         all.removeAll { it.timeMillis < cutoff }
+        save()
+    }
+
+    fun markSynced(times: Set<Long>) {
+        if (times.isEmpty()) return
+        all.replaceAll { if (it.timeMillis in times) it.copy(synced = true) else it }
         save()
     }
 
@@ -61,6 +82,7 @@ class CheckInStore(context: Context) {
                 focus = o.getInt("focus"),
                 sleepQuality = if (o.has("sleep")) o.getInt("sleep") else null,
                 note = o.optString("note"),
+                synced = o.optBoolean("synced"),
             )
         }
     }.getOrDefault(emptyList())
@@ -73,9 +95,11 @@ class CheckInStore(context: Context) {
                 put("mood", c.mood); put("energy", c.energy); put("focus", c.focus)
                 c.sleepQuality?.let { put("sleep", it) }
                 if (c.note.isNotEmpty()) put("note", c.note)
+                if (c.synced) put("synced", true)
             })
         }
-        prefs.edit().putString(KEY, array.toString()).apply()
+        // commit() rather than apply(), so the sync worker never reads a stale list.
+        prefs.edit().putString(KEY, array.toString()).commit()
     }
 
     companion object {

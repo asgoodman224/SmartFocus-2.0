@@ -1,7 +1,10 @@
 package com.example.smartfocus
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -19,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,12 +35,22 @@ import androidx.compose.ui.unit.dp
 import com.example.smartfocus.data.AppSettings
 import com.example.smartfocus.data.CheckInKind
 import com.example.smartfocus.data.CheckInStore
+import com.example.smartfocus.data.Dashboard
+import com.example.smartfocus.data.DataRepository
 import com.example.smartfocus.data.Metric
+import com.example.smartfocus.data.health.HealthReader
+import com.example.smartfocus.data.health.HealthStatus
+import com.example.smartfocus.data.moodMetric
+import com.example.smartfocus.data.usage.UsageReader
+import com.example.smartfocus.sync.Account
+import com.example.smartfocus.sync.Api
+import com.example.smartfocus.sync.SyncWorker
+import com.example.smartfocus.ui.sheets.DataSourcesSheetContent
+import com.example.smartfocus.ui.sheets.SignInSheetContent
+import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import java.time.LocalDate
 import com.example.smartfocus.data.formatMinutes
-import com.example.smartfocus.data.sampleFocusWeek
-import com.example.smartfocus.data.sampleMetrics
-import com.example.smartfocus.data.samplePhoneMetric
-import com.example.smartfocus.data.samplePhoneUse
 import com.example.smartfocus.data.wellnessOf
 import com.example.smartfocus.reminders.Reminders
 import com.example.smartfocus.reminders.isDone
@@ -68,16 +82,17 @@ sealed interface Sheet {
     data object Score : Sheet
     data object Profile : Sheet
     data object Settings : Sheet
+    data object DataSources : Sheet
+    data object SignIn : Sheet
 }
-
-private const val NAME = "Aiden" // placeholder until sign-in
-private const val EMAIL = "aiden@example.com"
 
 /**
  * @param requestedCheckIn a check-in to open, e.g. from a tapped reminder; [onRequestHandled]
  *   is called once it's open.
  * @param autoPrompt open the morning or evening check-in by itself when the app is opened at
  *   that time of day and it hasn't been done yet.
+ * @param preview fixed data for previews and screenshots; the app reads the phone's real data
+ *   when it's null.
  */
 @Composable
 fun SmartFocusApp(
@@ -86,10 +101,15 @@ fun SmartFocusApp(
     requestedCheckIn: CheckInKind? = null,
     onRequestHandled: () -> Unit = {},
     autoPrompt: Boolean = true,
+    preview: Dashboard? = null,
 ) {
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
     val store = remember { CheckInStore(context) }
+    val account = remember { Account(context) }
+    val repository = remember { DataRepository.get(context) }
+    var dashboard by remember { mutableStateOf(preview) }
+    var reload by remember { mutableIntStateOf(0) }
     var sheet by remember { mutableStateOf(initialSheet) }
     // Keeps the last sheet's content on screen while it animates away.
     var shown by remember { mutableStateOf(initialSheet) }
@@ -100,11 +120,58 @@ fun SmartFocusApp(
 
     val now = System.currentTimeMillis()
     val today = store.all.filter { CheckInStore.isSameDay(it.timeMillis, now) }
-    val wellness = wellnessOf(sampleMetrics, samplePhoneUse, today)
+    val metrics = dashboard?.metrics.orEmpty() + moodMetric(store.all, LocalDate.now())
+    val wellness = wellnessOf(metrics, dashboard?.phone, today)
+    val missing = dashboard?.let { d ->
+        listOfNotNull(
+            "Health Connect".takeIf { d.health == HealthStatus.NotGranted || d.health == HealthStatus.NeedsInstall },
+            "Usage access".takeIf { !d.usageAccess },
+        )
+    }.orEmpty()
+
+    // Re-read the phone's data whenever the app comes back to the front (e.g. from Settings
+    // after turning on usage access), and sync if signed in.
+    if (preview == null) {
+        LifecycleResumeEffect(reload) {
+            val job = scope.launch { dashboard = repository.dashboard() }
+            if (account.signedIn) SyncWorker.syncSoon(context)
+            onPauseOrDispose { job.cancel() }
+        }
+    }
     val next = nextDue(now, settings.schedule(), today)?.let { (kind, minutes) -> "${kind.title} at ${formatMinutes(minutes)}" }
 
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         Reminders.scheduleAll(context)
+        reload++
+    }
+    val askHealth = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
+        if (!granted.containsAll(HealthReader.Permissions)) settings.healthDenials += 1
+        reload++
+    }
+    fun open(intent: Intent) {
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // Nothing on this phone handles it; the source stays off.
+        }
+    }
+    fun connectHealth() {
+        when (dashboard?.health) {
+            HealthStatus.NotGranted ->
+                // Android stops showing the dialog after it's been dismissed twice.
+                if (settings.healthDenials >= 2) open(HealthReader.settingsIntent(context)) else askHealth.launch(HealthReader.Permissions)
+            HealthStatus.NeedsInstall -> open(HealthReader.installIntent())
+            HealthStatus.Granted -> open(HealthReader.settingsIntent(context))
+            else -> Unit
+        }
+    }
+    fun allowNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 && !settings.askedNotifications) {
+            settings.askedNotifications = true
+            askPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }
     }
     fun requestNotifications() {
         if (Build.VERSION.SDK_INT >= 33 && !Reminders.canNotify(context)) {
@@ -162,19 +229,20 @@ fun SmartFocusApp(
             Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
                 SkyBackground(time)
                 HomeScreen(
-                    name = NAME,
+                    name = settings.name,
                     heroStyle = settings.heroStyle,
                     wellness = wellness,
-                    focusScore = sampleFocusWeek.last(),
-                    focusWeek = sampleFocusWeek,
-                    metrics = sampleMetrics,
-                    phone = samplePhoneUse,
+                    focusWeek = dashboard?.focusWeek,
+                    metrics = metrics,
+                    phone = dashboard?.phone,
+                    missingSources = missing,
+                    onConnect = { sheet = Sheet.DataSources },
                     bedMinutes = settings.bedMinutes,
                     todayCheckIns = today,
                     nextCheckIn = next,
                     onOpenScore = { sheet = Sheet.Score },
                     onOpenMetric = { sheet = Sheet.MetricDetail(it) },
-                    onOpenPhone = { sheet = Sheet.MetricDetail(samplePhoneMetric) },
+                    onOpenPhone = { dashboard?.phoneMetric?.let { sheet = Sheet.MetricDetail(it) } },
                     onCheckIn = { sheet = checkInNow(it) },
                     listState = listState,
                 )
@@ -199,6 +267,8 @@ fun SmartFocusApp(
                 is Sheet.MetricDetail -> current.metric.title
                 is Sheet.CheckIn -> current.kind.title
                 Sheet.Score -> "Wellness"
+                Sheet.DataSources -> "Data sources"
+                Sheet.SignIn -> "Study account"
                 Sheet.Profile -> "Profile"
                 Sheet.Settings -> "Settings"
                 null -> ""
@@ -219,17 +289,52 @@ fun SmartFocusApp(
                     // Back to the top, where the score counts up.
                     scope.launch { listState.animateScrollToItem(0) }
                     if (!settings.askedNotifications && settings.remindersEnabled) requestNotifications()
+                    if (account.signedIn) SyncWorker.syncSoon(context)
                 }
                 Sheet.Score -> ScoreSheetContent(wellness, onCheckIn = { sheet = checkInNow(null) })
-                Sheet.Profile -> ProfileSheetContent(NAME, EMAIL)
+                Sheet.Profile -> ProfileSheetContent(
+                    settings,
+                    email = account.email,
+                    sources = listOf(
+                        "Health Connect" to if (dashboard?.health == HealthStatus.Granted) "On" else "Off",
+                        "Usage access" to if (dashboard?.usageAccess == true) "On" else "Off",
+                        "Reminders" to if (settings.remindersEnabled && Reminders.canNotify(context)) "On" else "Off",
+                    ),
+                    onManageSources = { sheet = Sheet.DataSources },
+                )
                 Sheet.Settings -> SettingsSheetContent(
                     settings,
+                    account,
                     onRemindersChanged = { enabled ->
                         Reminders.scheduleAll(context)
                         if (enabled) requestNotifications()
                     },
-                    onSignOut = { sheet = null },
+                    onDataSources = { sheet = Sheet.DataSources },
+                    onSignIn = { sheet = Sheet.SignIn },
+                    onSyncNow = { SyncWorker.syncSoon(context) },
+                    onSignOut = {
+                        val server = account.serverUrl
+                        val token = account.token
+                        account.signOut()
+                        SyncWorker.cancel(context)
+                        // Ends the session on the server too; fine if it's unreachable.
+                        scope.launch { runCatching { Api(server, token).signOut() } }
+                    },
                 )
+                Sheet.DataSources -> DataSourcesSheetContent(
+                    usageAccess = dashboard?.usageAccess == true,
+                    health = dashboard?.health ?: HealthStatus.Unavailable,
+                    notifications = Reminders.canNotify(context),
+                    onUsage = { open(UsageReader.settingsIntent(context)) },
+                    onHealth = ::connectHealth,
+                    onNotifications = ::allowNotifications,
+                )
+                Sheet.SignIn -> SignInSheetContent(account.serverUrl) { server, session ->
+                    account.signIn(server, session.email, session.token)
+                    SyncWorker.schedule(context)
+                    SyncWorker.syncSoon(context)
+                    sheet = Sheet.Settings
+                }
                 null -> Unit
             }
         }

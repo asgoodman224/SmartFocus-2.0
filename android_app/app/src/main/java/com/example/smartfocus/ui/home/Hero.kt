@@ -44,7 +44,7 @@ import com.example.smartfocus.data.PhoneUse
 import com.example.smartfocus.data.Wellness
 import com.example.smartfocus.data.conditionLabel
 import com.example.smartfocus.data.formatMinutes
-import com.example.smartfocus.data.greeting
+import com.example.smartfocus.data.salutation
 import com.example.smartfocus.data.weatherLabel
 import com.example.smartfocus.ui.theme.MetricColors
 import com.example.smartfocus.ui.theme.TextPrimary
@@ -66,14 +66,16 @@ internal data class Headline(
 internal fun headline(
     style: HeroStyle,
     wellness: Wellness,
-    focusScore: Int,
+    focusScore: Int?,
     metrics: List<Metric>,
-    phone: PhoneUse,
+    phone: PhoneUse?,
     bedMinutes: Int,
     hour: Int,
 ): Headline {
     // Non-breaking spaces keep each "Body 84" together when large text wraps the line.
-    val pillars = listOfNotNull("Body\u00A0${wellness.body}", wellness.mind?.let { "Mind\u00A0$it" }, "Digital\u00A0${wellness.digital}")
+    val pillars = listOfNotNull(
+        wellness.body?.let { "Body\u00A0$it" }, wellness.mind?.let { "Mind\u00A0$it" }, wellness.digital?.let { "Digital\u00A0$it" },
+    )
         .joinToString("  ·  ")
     val score = wellness.score
     fun metric(id: String) = metrics.firstOrNull { it.id == id }
@@ -84,12 +86,13 @@ internal fun headline(
         HeroStyle.Conditions ->
             if (score == null) Headline("Forecast pending", "Check in to see today's conditions", pillars, pending = true)
             else {
-                val parts = listOf("Body" to wellness.body, "Mind" to wellness.mind!!, "Digital" to wellness.digital)
+                val parts = listOf("Body" to wellness.body, "Mind" to wellness.mind, "Digital" to wellness.digital)
+                    .mapNotNull { (name, v) -> v?.let { name to it } }
                 val high = parts.maxBy { it.second }
                 val low = parts.minBy { it.second }
                 Headline(weatherLabel(score), "Wellness $score", "H: ${high.first} ${high.second}    L: ${low.first} ${low.second}")
             }
-        HeroStyle.Focus -> Headline(
+        HeroStyle.Focus -> if (focusScore == null) Headline("--", "Turn on usage access to see focus", "") else Headline(
             "$focusScore",
             focusLabel(focusScore),
             listOfNotNull(metric("sleep")?.let { "Sleep ${it.value}" }, metric("mood")?.let { "Mood ${it.value.replace(" ", "")}" })
@@ -100,7 +103,7 @@ internal fun headline(
             in 11..16 -> metric("activity").let {
                 Headline(it?.value ?: "--", "Steps so far", it?.let { m -> "${(m.progress * 100).toInt()}% of your ${m.goal} goal" }.orEmpty())
             }
-            in 17..21 -> Headline(phone.totalText, "On your phone today", phone.changeText)
+            in 17..21 -> Headline(phone?.totalText ?: "--", "On your phone today", phone?.changeText.orEmpty())
             else -> Headline(formatMinutes(bedMinutes), "Bedtime", "Time to wind down")
         }
     }
@@ -143,11 +146,11 @@ internal fun Hero(
                 onClick = if (headline.pending) onCheckIn else onOpen,
             )
             .clearAndSetSemantics {
-                contentDescription = "${greeting()}, $name. ${headline.value}, ${headline.label}. ${headline.detail}"
+                contentDescription = "${salutation(name)}. ${headline.value}, ${headline.label}. ${headline.detail}"
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("${greeting()}, $name", color = TextPrimary, fontSize = 24.sp)
+        Text(salutation(name), color = TextPrimary, fontSize = 24.sp)
         if (style == HeroStyle.Ring) {
             Spacer(Modifier.height(16.dp))
             val shown = if (headline.score != null) countUp.value / headline.score else 1f
@@ -186,7 +189,7 @@ private val RingColors = listOf(MetricColors.Activity, MetricColors.Mood, Metric
 /** Three rings, outside in: body, mind, digital. Mind stays empty until today's check-in. */
 @Composable
 private fun ScoreRings(wellness: Wellness, shown: Float, value: String, label: String) {
-    val parts = listOf(wellness.body, wellness.mind ?: 0, wellness.digital)
+    val parts = listOf(wellness.body ?: 0, wellness.mind ?: 0, wellness.digital ?: 0)
     Box(Modifier.size(212.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 13.dp.toPx()
@@ -237,7 +240,7 @@ internal fun CompactHeader(name: String, headline: Headline, countUp: Animatable
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("${greeting()}, $name", color = TextPrimary, fontSize = 20.sp)
+        Text(salutation(name), color = TextPrimary, fontSize = 20.sp)
         Text(
             if (headline.pending) headline.label else "$value  |  ${headline.label}",
             color = TextSecondary,

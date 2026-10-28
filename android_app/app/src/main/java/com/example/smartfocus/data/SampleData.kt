@@ -15,8 +15,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-// SAMPLE DATA. Everything here stands in for Health Connect, usage access and check-ins until
-// those are connected. Week lists run oldest first; the last value is today.
+// SAMPLE DATA, for previews and screenshots. The app itself shows real data (see Dashboard.kt).
+// Week lists run oldest first; the last value is today.
 
 data class Metric(
     val id: String,
@@ -35,6 +35,8 @@ data class Metric(
     val goalValue: Float,
     val summary: String,
     val source: String,
+    /** False when nothing was recorded today (the value shows "--" and it's left out of scores). */
+    val hasData: Boolean = true,
 )
 
 data class PhoneUse(
@@ -136,6 +138,16 @@ val samplePhoneMetric = Metric(
 /** Focus score (0–100) for each of the last 7 days, oldest first. */
 val sampleFocusWeek = listOf(64, 71, 58, 76, 69, 61, 72)
 
+/** Everything above as a dashboard, for previews and screenshots. */
+val sampleDashboard = Dashboard(
+    usageAccess = true,
+    health = com.example.smartfocus.data.health.HealthStatus.Granted,
+    metrics = sampleMetrics.filter { it.id != "mood" },
+    phone = samplePhoneUse,
+    phoneMetric = samplePhoneMetric,
+    focusWeek = sampleFocusWeek,
+)
+
 /** Short weekday names for the last 7 days, oldest first, with "Today" last. */
 fun lastSevenDays(): List<String> {
     val format = SimpleDateFormat("EEE", Locale.getDefault())
@@ -155,3 +167,6 @@ fun greeting(hour: Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)): Stri
     in 12..17 -> "Good afternoon"
     else -> "Good evening"
 }
+
+/** "Good evening, Sam", or just "Good evening" before a name is set. */
+fun salutation(name: String): String = if (name.isBlank()) greeting() else "${greeting()}, $name"

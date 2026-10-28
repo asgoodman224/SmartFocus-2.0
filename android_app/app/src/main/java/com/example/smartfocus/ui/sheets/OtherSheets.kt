@@ -38,6 +38,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.text.format.DateFormat
+import android.text.format.DateUtils
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.Icon
+import com.example.smartfocus.sync.Account
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -152,7 +157,13 @@ private fun RatingRow(label: String, value: Int?, low: String, high: String, onC
 }
 
 @Composable
-internal fun PillButton(text: String, onClick: () -> Unit, enabled: Boolean = true, destructive: Boolean = false) {
+internal fun PillButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    destructive: Boolean = false,
+    secondary: Boolean = false,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -160,7 +171,7 @@ internal fun PillButton(text: String, onClick: () -> Unit, enabled: Boolean = tr
             .clip(CircleShape)
             .background(
                 when {
-                    destructive -> Color.White.copy(alpha = 0.08f)
+                    destructive || secondary -> Color.White.copy(alpha = 0.08f)
                     enabled -> Color.White
                     else -> Color.White.copy(alpha = 0.25f)
                 }
@@ -172,6 +183,7 @@ internal fun PillButton(text: String, onClick: () -> Unit, enabled: Boolean = tr
             text,
             color = when {
                 destructive -> Color(0xFFFF8A80)
+                secondary -> TextPrimary
                 enabled -> SheetColor
                 else -> SheetColor.copy(alpha = 0.6f)
             },
@@ -184,7 +196,14 @@ internal fun PillButton(text: String, onClick: () -> Unit, enabled: Boolean = tr
 // ---- Profile --------------------------------------------------------------------------------
 
 @Composable
-fun ColumnScope.ProfileSheetContent(name: String, email: String) {
+fun ColumnScope.ProfileSheetContent(
+    settings: AppSettings,
+    email: String?,
+    sources: List<Pair<String, String>>,
+    onManageSources: () -> Unit,
+) {
+    var name by remember { mutableStateOf(settings.name) }
+    val initial = name.ifBlank { email.orEmpty() }.take(1).uppercase()
     Box(
         Modifier
             .align(Alignment.CenterHorizontally)
@@ -194,17 +213,36 @@ fun ColumnScope.ProfileSheetContent(name: String, email: String) {
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
-        Text(name.take(1), color = TextPrimary, fontSize = 36.sp, fontWeight = FontWeight.Light)
+        if (initial.isEmpty()) Icon(Icons.Outlined.Person, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(40.dp))
+        else Text(initial, color = TextPrimary, fontSize = 36.sp, fontWeight = FontWeight.Light)
     }
-    Spacer(Modifier.height(12.dp))
-    Text(name, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterHorizontally))
-    Text(email, color = TextSecondary, fontSize = 15.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+    Spacer(Modifier.height(20.dp))
+    OutlinedTextField(
+        value = name,
+        onValueChange = { if (it.length <= 40) { name = it; settings.updateName(it) } },
+        label = { Text("Your name") },
+        placeholder = { Text("What Home should call you") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color.White.copy(alpha = 0.7f),
+            unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+            focusedLabelColor = TextSecondary,
+            unfocusedLabelColor = TextTertiary,
+            cursorColor = Color.White,
+            focusedContainerColor = Color.White.copy(alpha = 0.05f),
+            unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+        ),
+    )
     Spacer(Modifier.height(24.dp))
     SectionTitle("Account")
-    RowGroup(listOf("Platform" to "Android", "Study ID" to "Not enrolled yet", "Member since" to "Oct 2026"))
+    RowGroup(listOf("Study account" to (email ?: "Not signed in"), "Platform" to "Android"))
     Spacer(Modifier.height(20.dp))
     SectionTitle("Data sources")
-    RowGroup(listOf("Health Connect" to "Not connected", "Usage access" to "Not connected", "Notifications" to "Not connected"))
+    RowGroup(sources)
+    Spacer(Modifier.height(16.dp))
+    PillButton("Manage data sources", onClick = onManageSources, secondary = true)
 }
 
 @Composable
@@ -228,11 +266,14 @@ private fun RowGroup(rows: List<Pair<String, String>>) {
 @Composable
 fun ColumnScope.SettingsSheetContent(
     settings: AppSettings,
+    account: Account,
     /** Called after any reminder setting changes, so alarms can be rescheduled. */
     onRemindersChanged: (enabled: Boolean) -> Unit,
+    onDataSources: () -> Unit,
+    onSignIn: () -> Unit,
+    onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    var shareData by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TimeSetting?>(null) }
 
     SectionTitle("Home headline")
@@ -264,16 +305,42 @@ fun ColumnScope.SettingsSheetContent(
         }
     }
     Spacer(Modifier.height(20.dp))
-    SectionTitle("Privacy")
+    SectionTitle("Data")
     SheetCard {
-        ToggleRow(
-            "Share anonymous data",
-            shareData,
-            description = "Sends your data to the research team without your name or email.",
-        ) { shareData = it }
+        ValueRow("Data sources", "Health, usage, reminders", onDataSources)
     }
-    Spacer(Modifier.height(28.dp))
-    PillButton("Sign out", onClick = onSignOut, destructive = true)
+    Spacer(Modifier.height(20.dp))
+    SectionTitle("Study account")
+    SheetCard {
+        if (account.signedIn) {
+            ValueRow("Signed in as", account.email.orEmpty(), onClick = null)
+            RowDivider()
+            ValueRow(
+                "Last synced",
+                if (account.lastSync == 0L) "Not yet"
+                else DateUtils.getRelativeTimeSpanString(account.lastSync, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
+                onClick = null,
+            )
+            account.syncError?.let { SyncError(it) }
+            RowDivider()
+            ValueRow("Sync now", "", onSyncNow)
+        } else {
+            Text(
+                "Not signed in. Everything stays on this phone. Sign in to send your check-ins and daily totals to your study's server.",
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+            account.syncError?.let { SyncError(it) }
+            Spacer(Modifier.height(12.dp))
+            PillButton("Sign in", onClick = onSignIn)
+        }
+    }
+    if (account.signedIn) {
+        Spacer(Modifier.height(28.dp))
+        PillButton("Sign out", onClick = onSignOut, destructive = true)
+    }
 
     editing?.let { which ->
         TimeDialog(
@@ -313,17 +380,23 @@ private fun ChoiceRow(label: String, description: String, selected: Boolean, onS
 }
 
 @Composable
-private fun ValueRow(label: String, value: String, onClick: () -> Unit) {
+private fun ValueRow(label: String, value: String, onClick: (() -> Unit)?) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            .clickable(role = Role.Button, onClickLabel = "Change $label", onClick = onClick),
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .semantics(mergeDescendants = true) { },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = TextPrimary, fontSize = 16.sp, modifier = Modifier.weight(1f))
-        Text(value, color = TextSecondary, fontSize = 16.sp)
+        Text(value, color = TextSecondary, fontSize = 16.sp, maxLines = 1, modifier = Modifier.padding(start = 12.dp))
     }
+}
+
+@Composable
+private fun SyncError(message: String) {
+    Text(message, color = Color(0xFFFFB4A9), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
