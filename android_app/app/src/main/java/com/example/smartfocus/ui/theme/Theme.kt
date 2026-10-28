@@ -3,25 +3,22 @@ package com.example.smartfocus.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
-// Screens read colors by role (MaterialTheme.colorScheme.surface, .primary, ...), never by
-// hex value, so a light variant can be added here later without touching any screen.
+// Material components (switches, text fields, ripples) read these roles. The app itself draws
+// on a sky with glass, so the scheme stays neutral: white primary, transparent surfaces.
 private val SmartFocusColors = darkColorScheme(
-    primary = Lavender,
-    onPrimary = Plum950,
-    background = Plum950,
-    onBackground = OnPlum,
-    surface = Plum800,
-    onSurface = OnPlum,
-    onSurfaceVariant = LavenderMuted,
-    outlineVariant = Plum500,
+    primary = Color.White,
+    onPrimary = Color(0xFF121531),
+    background = Color(0xFF0A0F26),
+    onBackground = TextPrimary,
+    surface = SheetColor,
+    onSurface = TextPrimary,
+    onSurfaceVariant = TextSecondary,
+    outline = Color.White.copy(alpha = 0.40f),
+    outlineVariant = GlassEdge,
 )
 
-/**
- * The app's theme. Dark only for now: the plum palette is the app's look. Dynamic (wallpaper)
- * color is deliberately off so the brand colors stay consistent.
- * TODO: add a light color scheme so the app follows the system appearance.
- */
 @Composable
 fun SmartFocusTheme(content: @Composable () -> Unit) {
     MaterialTheme(

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Dark window so launch doesn't flash white before the plum UI draws. -->
+    <!-- Dark window so launch doesn't flash white before the sky draws. -->
     <style name="Theme.SmartFocus" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/plum_950</item>
+        <item name="android:windowBackground">@color/sky_night</item>
     </style>
 </resources>
