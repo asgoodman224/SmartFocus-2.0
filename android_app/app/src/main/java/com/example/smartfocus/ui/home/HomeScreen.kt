@@ -53,10 +53,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.smartfocus.CheckInEntry
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import com.example.smartfocus.data.CheckIn
+import com.example.smartfocus.data.CheckInKind
+import com.example.smartfocus.data.HeroStyle
 import com.example.smartfocus.data.Metric
+import com.example.smartfocus.data.Wellness
 import com.example.smartfocus.data.PhoneUse
-import com.example.smartfocus.data.greeting
 import com.example.smartfocus.data.lastSevenDays
 import com.example.smartfocus.ui.components.GlassPanel
 import com.example.smartfocus.ui.components.GradientBar
@@ -71,18 +76,25 @@ import com.example.smartfocus.ui.theme.TextPrimary
 import com.example.smartfocus.ui.theme.TextSecondary
 import com.example.smartfocus.ui.theme.TextTertiary
 import kotlinx.coroutines.delay
+import java.util.Calendar
 
 private val HeroCollapseDistance = 180.dp
-private val CompactHeaderHeight = 64.dp
+internal val CompactHeaderHeight = 64.dp
 
 @Composable
 fun HomeScreen(
     name: String,
+    heroStyle: HeroStyle,
+    wellness: Wellness,
     focusScore: Int,
     focusWeek: List<Int>,
     metrics: List<Metric>,
     phone: PhoneUse,
-    checkIn: CheckInEntry?,
+    bedMinutes: Int,
+    todayCheckIns: List<CheckIn>,
+    /** e.g. "Evening check-in at 10:30 PM", or null when nothing else is due today. */
+    nextCheckIn: String?,
+    onOpenScore: () -> Unit,
     onOpenMetric: (Metric) -> Unit,
     onOpenPhone: () -> Unit,
     onCheckIn: (mood: Int?) -> Unit,
@@ -106,7 +118,15 @@ fun HomeScreen(
     val headerPx = with(density) { (statusTop + CompactHeaderHeight).toPx() }
     val fadePx = with(density) { 28.dp.toPx() }
     val stacked = density.fontScale >= 1.5f
-    val focusLabel = focusLabel(focusScore)
+    val headline = headline(
+        heroStyle, wellness, focusScore, metrics, phone, bedMinutes,
+        Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
+    )
+    // Today's score counts up when it first appears and whenever a check-in changes it.
+    val countUp = remember { Animatable(0f) }
+    LaunchedEffect(headline.score) {
+        headline.score?.let { countUp.animateTo(it.toFloat(), tween(1400, easing = FastOutSlowInEasing)) }
+    }
 
     Box(modifier.fillMaxSize()) {
         LazyColumn(
@@ -133,13 +153,18 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(key = "hero") {
-                Hero(name, focusScore, focusLabel, metrics, Modifier.graphicsLayer {
-                    alpha = (1f - collapse * 1.4f).coerceIn(0f, 1f)
-                    translationY = collapse * collapseDistance * 0.35f
-                })
+                Hero(
+                    heroStyle, name, headline, wellness, countUp,
+                    onOpen = onOpenScore,
+                    onCheckIn = { onCheckIn(null) },
+                    modifier = Modifier.graphicsLayer {
+                        alpha = (1f - collapse * 1.4f).coerceIn(0f, 1f)
+                        translationY = collapse * collapseDistance * 0.35f
+                    },
+                )
             }
             item(key = "checkin") {
-                CheckInPanel(checkIn, onCheckIn, Modifier.entrance(0, introPlayed))
+                CheckInPanel(todayCheckIns, nextCheckIn, onCheckIn, Modifier.entrance(0, introPlayed))
             }
             item(key = "phone") {
                 PhonePanel(phone, onOpenPhone, Modifier.entrance(1, introPlayed))
@@ -174,66 +199,13 @@ fun HomeScreen(
             }
         }
 
-        CompactHeader(name, focusScore, focusLabel, collapse)
-    }
-}
-
-private fun focusLabel(score: Int): String = when {
-    score >= 80 -> "Deep focus"
-    score >= 65 -> "Steady focus"
-    score >= 50 -> "Scattered"
-    else -> "Restless"
-}
-
-@Composable
-private fun Hero(name: String, score: Int, label: String, metrics: List<Metric>, modifier: Modifier) {
-    val sleep = metrics.firstOrNull { it.id == "sleep" }
-    val mood = metrics.firstOrNull { it.id == "mood" }
-    val summary = listOfNotNull(sleep?.let { "Sleep ${it.value}" }, mood?.let { "Mood ${it.value.replace(" ", "")}" })
-        .joinToString("  ·  ")
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(top = 40.dp, bottom = 28.dp)
-            .clearAndSetSemantics {
-                contentDescription = "${greeting()}, $name. Focus score $score, ${label.lowercase()}. $summary"
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("${greeting()}, $name", color = TextPrimary, fontSize = 24.sp)
-        Text(
-            "$score",
-            color = TextPrimary,
-            fontSize = 104.sp,
-            lineHeight = 108.sp,
-            fontWeight = FontWeight.ExtraLight,
-        )
-        Text(label, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(2.dp))
-        Text(summary, color = TextSecondary, fontSize = 16.sp)
+        CompactHeader(name, headline, countUp, collapse)
     }
 }
 
 @Composable
-private fun CompactHeader(name: String, score: Int, label: String, collapse: Float) {
-    val alpha = ((collapse - 0.55f) / 0.45f).coerceIn(0f, 1f)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .height(CompactHeaderHeight)
-            .graphicsLayer { this.alpha = alpha }
-            .then(if (alpha < 0.5f) Modifier.clearAndSetSemantics { } else Modifier),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("${greeting()}, $name", color = TextPrimary, fontSize = 20.sp)
-        Text("$score  |  $label", color = TextSecondary, fontSize = 15.sp)
-    }
-}
-
-@Composable
-private fun CheckInPanel(entry: CheckInEntry?, onCheckIn: (Int?) -> Unit, modifier: Modifier) {
+private fun CheckInPanel(today: List<CheckIn>, next: String?, onCheckIn: (Int?) -> Unit, modifier: Modifier) {
+    val entry = today.lastOrNull()
     GlassPanel(modifier.fillMaxWidth(), onClick = { onCheckIn(null) }, onClickLabel = "Check in") {
         PanelLabel(if (entry == null) "How are you feeling?" else "Today's check-in", AppIcons.Mood)
         Spacer(Modifier.height(12.dp))
@@ -258,15 +230,18 @@ private fun CheckInPanel(entry: CheckInEntry?, onCheckIn: (Int?) -> Unit, modifi
                 Text("Great", color = TextTertiary, fontSize = 13.sp)
             }
         } else {
-            Text("Checked in at ${entry.timeText}", color = TextPrimary, fontSize = 18.sp)
+            Text("${if (entry.kind == CheckInKind.Anytime) "Checked in" else entry.kind.title} at ${entry.timeText}", color = TextPrimary, fontSize = 18.sp)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Mood ${entry.mood}  ·  Energy ${entry.energy}  ·  Focus ${entry.focus}",
+                listOfNotNull(
+                    entry.sleepQuality?.let { "Sleep\u00A0$it" },
+                    "Mood\u00A0${entry.mood}", "Energy\u00A0${entry.energy}", "Focus\u00A0${entry.focus}",
+                ).joinToString("  ·  "),
                 color = TextSecondary,
                 fontSize = 15.sp,
             )
             Spacer(Modifier.height(4.dp))
-            Text("Tap to check in again", color = TextTertiary, fontSize = 13.sp)
+            Text(next?.let { "Next: $it" } ?: "Tap to check in again", color = TextTertiary, fontSize = 13.sp)
         }
     }
 }

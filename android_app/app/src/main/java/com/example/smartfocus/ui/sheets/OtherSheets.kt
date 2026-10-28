@@ -37,28 +37,46 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.smartfocus.CheckInEntry
+import android.text.format.DateFormat
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.ui.platform.LocalContext
+import com.example.smartfocus.data.AppSettings
+import com.example.smartfocus.data.CheckIn
+import com.example.smartfocus.data.HeroStyle
+import com.example.smartfocus.data.formatMinutes
+import com.example.smartfocus.reminders.MiddayMinutes
+import com.example.smartfocus.data.CheckInKind
 import com.example.smartfocus.ui.theme.GlassEdge
 import com.example.smartfocus.ui.theme.SheetColor
 import com.example.smartfocus.ui.theme.TextPrimary
 import com.example.smartfocus.ui.theme.TextSecondary
 import com.example.smartfocus.ui.theme.TextTertiary
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 // ---- Check-in -------------------------------------------------------------------------------
 
 @Composable
-fun ColumnScope.CheckInSheetContent(initialMood: Int?, onSave: (CheckInEntry) -> Unit) {
+fun ColumnScope.CheckInSheetContent(kind: CheckInKind, initialMood: Int?, onSave: (CheckIn) -> Unit) {
+    val asksSleep = kind == CheckInKind.Morning
+    var sleep by remember { mutableStateOf<Int?>(null) }
     var mood by remember { mutableStateOf(initialMood) }
     var energy by remember { mutableStateOf<Int?>(null) }
     var focus by remember { mutableStateOf<Int?>(null) }
     var note by remember { mutableStateOf("") }
-    val complete = mood != null && energy != null && focus != null
+    val complete = mood != null && energy != null && focus != null && (sleep != null || !asksSleep)
 
-    Text("How are you doing right now?", color = TextSecondary, fontSize = 16.sp)
+    Text(kind.prompt, color = TextSecondary, fontSize = 16.sp)
     Spacer(Modifier.height(20.dp))
+    if (asksSleep) {
+        RatingRow("Sleep", sleep, "Restless", "Rested") { sleep = it }
+        Spacer(Modifier.height(22.dp))
+    }
     RatingRow("Mood", mood, "Low", "Great") { mood = it }
     Spacer(Modifier.height(22.dp))
     RatingRow("Energy", energy, "Drained", "Energized") { energy = it }
@@ -88,16 +106,16 @@ fun ColumnScope.CheckInSheetContent(initialMood: Int?, onSave: (CheckInEntry) ->
         enabled = complete,
         onClick = {
             onSave(
-                CheckInEntry(
-                    mood = mood!!, energy = energy!!, focus = focus!!, note = note.trim(),
-                    timeText = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
+                CheckIn(
+                    timeMillis = System.currentTimeMillis(), kind = kind,
+                    mood = mood!!, energy = energy!!, focus = focus!!, sleepQuality = sleep, note = note.trim(),
                 )
             )
         },
     )
     if (!complete) {
         Spacer(Modifier.height(8.dp))
-        Text("Rate all three to save.", color = TextTertiary, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(if (asksSleep) "Rate all four to save." else "Rate all three to save.", color = TextTertiary, fontSize = 13.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
     }
 }
 
@@ -208,16 +226,42 @@ private fun RowGroup(rows: List<Pair<String, String>>) {
 // ---- Settings -------------------------------------------------------------------------------
 
 @Composable
-fun ColumnScope.SettingsSheetContent(onSignOut: () -> Unit) {
-    var notifications by remember { mutableStateOf(true) }
-    var reminders by remember { mutableStateOf(true) }
+fun ColumnScope.SettingsSheetContent(
+    settings: AppSettings,
+    /** Called after any reminder setting changes, so alarms can be rescheduled. */
+    onRemindersChanged: (enabled: Boolean) -> Unit,
+    onSignOut: () -> Unit,
+) {
     var shareData by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<TimeSetting?>(null) }
 
-    SectionTitle("Notifications")
+    SectionTitle("Home headline")
+    SheetCard(Modifier.selectableGroup()) {
+        HeroStyle.entries.forEachIndexed { i, style ->
+            if (i > 0) RowDivider()
+            ChoiceRow(style.label, style.description, selected = settings.heroStyle == style) { settings.updateHeroStyle(style) }
+        }
+    }
+    Spacer(Modifier.height(20.dp))
+    SectionTitle("Check-in reminders")
     SheetCard {
-        ToggleRow("Notifications", notifications) { notifications = it }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(GlassEdge))
-        ToggleRow("Sleep reminders", reminders) { reminders = it }
+        ToggleRow(
+            "Reminders",
+            settings.remindersEnabled,
+            description = "A notification when you wake up and 30 minutes before bed. Your score appears once you check in.",
+        ) { settings.updateReminders(it); onRemindersChanged(it) }
+        if (settings.remindersEnabled) {
+            RowDivider()
+            ValueRow("Wake-up time", formatMinutes(settings.wakeMinutes)) { editing = TimeSetting.Wake }
+            RowDivider()
+            ValueRow("Bedtime", formatMinutes(settings.bedMinutes)) { editing = TimeSetting.Bed }
+            RowDivider()
+            ToggleRow(
+                "Midday check-in",
+                settings.middayEnabled,
+                description = "Another reminder at ${formatMinutes(MiddayMinutes)}.",
+            ) { settings.updateMidday(it); onRemindersChanged(true) }
+        }
     }
     Spacer(Modifier.height(20.dp))
     SectionTitle("Privacy")
@@ -230,6 +274,100 @@ fun ColumnScope.SettingsSheetContent(onSignOut: () -> Unit) {
     }
     Spacer(Modifier.height(28.dp))
     PillButton("Sign out", onClick = onSignOut, destructive = true)
+
+    editing?.let { which ->
+        TimeDialog(
+            title = if (which == TimeSetting.Wake) "Wake-up time" else "Bedtime",
+            initialMinutes = if (which == TimeSetting.Wake) settings.wakeMinutes else settings.bedMinutes,
+            onDismiss = { editing = null },
+        ) { minutes ->
+            if (which == TimeSetting.Wake) settings.updateWake(minutes) else settings.updateBed(minutes)
+            editing = null
+            onRemindersChanged(true)
+        }
+    }
+}
+
+private enum class TimeSetting { Wake, Bed }
+
+@Composable
+private fun RowDivider() = Box(Modifier.fillMaxWidth().height(1.dp).background(GlassEdge))
+
+@Composable
+private fun ChoiceRow(label: String, description: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(label, color = TextPrimary, fontSize = 16.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(description, color = TextSecondary, fontSize = 13.sp, lineHeight = 18.sp)
+        }
+        RadioButton(selected = selected, onClick = null)
+    }
+}
+
+@Composable
+private fun ValueRow(label: String, value: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable(role = Role.Button, onClickLabel = "Change $label", onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = TextPrimary, fontSize = 16.sp, modifier = Modifier.weight(1f))
+        Text(value, color = TextSecondary, fontSize = 16.sp)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TimeDialog(title: String, initialMinutes: Int, onDismiss: () -> Unit, onConfirm: (minutes: Int) -> Unit) {
+    val state = rememberTimePickerState(
+        initialHour = initialMinutes / 60,
+        initialMinute = initialMinutes % 60,
+        is24Hour = DateFormat.is24HourFormat(LocalContext.current),
+    )
+    val selected = Color.White.copy(alpha = 0.18f)
+    val unselected = Color.White.copy(alpha = 0.08f)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SheetColor,
+        tonalElevation = 0.dp,
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            TimePicker(
+                state,
+                colors = TimePickerDefaults.colors(
+                    clockDialColor = unselected,
+                    selectorColor = Color.White,
+                    clockDialSelectedContentColor = SheetColor,
+                    clockDialUnselectedContentColor = TextPrimary,
+                    periodSelectorBorderColor = Color.White.copy(alpha = 0.25f),
+                    periodSelectorSelectedContainerColor = selected,
+                    periodSelectorUnselectedContainerColor = Color.Transparent,
+                    periodSelectorSelectedContentColor = TextPrimary,
+                    periodSelectorUnselectedContentColor = TextSecondary,
+                    timeSelectorSelectedContainerColor = selected,
+                    timeSelectorUnselectedContainerColor = unselected,
+                    timeSelectorSelectedContentColor = TextPrimary,
+                    timeSelectorUnselectedContentColor = TextSecondary,
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("Done", color = TextPrimary) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
+        },
+    )
 }
 
 @Composable

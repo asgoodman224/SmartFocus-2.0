@@ -39,6 +39,7 @@ data class Metric(
 
 data class PhoneUse(
     val totalText: String,
+    val totalMinutes: Int,
     val changeText: String,
     val pickups: Int,
     val longestBreakText: String,
@@ -112,6 +113,7 @@ val sampleMetrics = listOf(
 
 val samplePhoneUse = PhoneUse(
     totalText = "3h 46m",
+    totalMinutes = 226,
     changeText = "9% less than usual",
     pickups = 61,
     longestBreakText = "1h 24m",
