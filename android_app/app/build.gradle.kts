@@ -18,6 +18,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Study server filled in on the sign-in screen, so testers don't have to type it.
+        // Build with -PstudyServer=https://example.com (empty by default).
+        val studyServer = (findProperty("studyServer") as String?).orEmpty()
+        buildConfigField("String", "DEFAULT_SERVER", "\"$studyServer\"")
     }
 
     buildTypes {
@@ -34,6 +39,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.smartfocus.BuildConfig
 
 /**
  * The study account this phone is signed in to, if any. Saved on the phone; the token is the
@@ -13,7 +14,7 @@ import androidx.compose.runtime.setValue
 class Account(context: Context) {
     private val prefs = context.getSharedPreferences("account", Context.MODE_PRIVATE)
 
-    var serverUrl by mutableStateOf(prefs.getString("server", "") ?: "")
+    var serverUrl by mutableStateOf(prefs.getString("server", null) ?: BuildConfig.DEFAULT_SERVER)
         private set
     var email by mutableStateOf(prefs.getString("email", null))
         private set
@@ -29,7 +30,7 @@ class Account(context: Context) {
 
     // Another instance (e.g. the sync worker) changed something: show it.
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, _ ->
-        serverUrl = p.getString("server", "") ?: ""
+        serverUrl = p.getString("server", null) ?: BuildConfig.DEFAULT_SERVER
         email = p.getString("email", null)
         lastSync = p.getLong("last_sync", 0L)
         syncError = p.getString("sync_error", null)
