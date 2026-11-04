@@ -1,6 +1,6 @@
 # SmartFocus API
 
-The REST API behind the SmartFocus mobile app: Node.js and Express 5, storing data in PostgreSQL.
+The REST API behind the SmartFocus mobile app: Node.js and Express 5, storing data in MySQL or PostgreSQL.
 
 It implements every endpoint the app's `src/services/smartfocusApi.ts` calls, returning the shapes in the app's `src/types/models.ts` (camelCase JSON). Errors come back as `{ "detail": "message" }`, which the app shows to users.
 
@@ -28,11 +28,21 @@ EXPO_PUBLIC_USE_MOCK_DATA=false
 | ------------- | --------------------------------- |
 | `npm run dev` | Run the API, restarting on changes |
 | `npm start`   | Run the API                       |
-| `npm test`    | Run the tests (no database needed; set `TEST_DATABASE_URL` to also test PostgreSQL) |
+| `npm test`    | Run the tests (no database needed; set `TEST_DATABASE_URL` to also test a database) |
 
-## Storage (PostgreSQL)
+## Storage (MySQL or PostgreSQL)
 
-Set `DATABASE_URL` in `.env` (for example `postgres://user:password@localhost:5432/smartfocus`, plus `DATABASE_SSL=true` for most hosted databases). On start the API creates any missing tables from [`src/store/schema.sql`](src/store/schema.sql), so an empty database is enough. Without `DATABASE_URL`, data is kept in memory and lost when the server stops.
+For the team's MySQL database, add the same settings as the `database-api` branch to `.env`:
+
+```
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD='your password'
+DB_NAME=smartfocus
+```
+
+Quote the password if it contains `#`. For PostgreSQL (or MySQL as a URL), set `DATABASE_URL=postgres://user:password@host:5432/smartfocus` instead, plus `DATABASE_SSL=true` for most hosted databases. On start the API creates the database if it is missing and any missing tables, from [`src/store/schema.mysql.sql`](src/store/schema.mysql.sql) or [`src/store/schema.sql`](src/store/schema.sql). They sit alongside the `database-api` tables without touching them. With no database settings, data is kept in memory and lost when the server stops.
 
 Every row belongs to an account (`account_id`, joined to `accounts.email`):
 
@@ -49,7 +59,7 @@ Every row belongs to an account (`account_id`, joined to `accounts.email`):
 
 The phone re-sends its last few days on every sync, and a re-upload replaces that day's rows.
 
-The API only talks to storage through the interface in [`src/store/index.js`](src/store/index.js). `src/store/postgresStore.js` implements it, and `src/store/memoryStore.js` is the in-memory stand-in. Run the test suite against PostgreSQL with `TEST_DATABASE_URL=postgres://... npm test`; each test uses its own temporary schema.
+The API only talks to storage through the interface in [`src/store/index.js`](src/store/index.js). `src/store/mysqlStore.js` and `src/store/postgresStore.js` implement it, and `src/store/memoryStore.js` is the in-memory stand-in. Run the test suite against a database with `TEST_DATABASE_URL=mysql://user:password@host:3306/x npm test` (or `postgres://...`); each test uses its own temporary database or schema.
 
 ## Endpoints
 
@@ -69,8 +79,8 @@ Everything except sign-up, sign-in and `/health` needs `Authorization: Bearer <t
 | GET    | `/v1/check-ins?limit=5`     | Check-In: recent history, newest `createdAt` first |
 | POST   | `/v1/check-ins`             | Check-In: save (also uploads offline check-ins later) |
 | GET    | `/v1/data-sources`          | Settings                                         |
-| PUT    | `/v1/data-sources/{id}`     | Phone reports a permission change (not wired up in the app yet) |
-| PUT    | `/v1/usage/days/{date}`     | Phone uploads a day of usage (not wired up in the app yet) |
+| PUT    | `/v1/data-sources/{id}`     | Phone reports a permission change (Android app) |
+| PUT    | `/v1/usage/days/{date}`     | Phone uploads a day of usage (Android app) |
 | GET    | `/v1/health/daily?days=7`   | Sleep, steps, exercise and distance per day      |
 | PUT    | `/v1/health/days/{date}`    | Phone uploads a day of health data               |
 | GET    | `/health`                   | Liveness check                                   |

@@ -1,15 +1,15 @@
 /**
  * Test setup: a fresh store per test and a pinned clock.
- * The store is in memory, or PostgreSQL when TEST_DATABASE_URL is set (each
- * test gets its own empty schema there, dropped when the run ends).
+ * The store is in memory, or a real database when TEST_DATABASE_URL is set
+ * (postgres://… or mysql://…). Each test then gets its own empty Postgres
+ * schema or MySQL database, dropped when the run ends.
  */
 process.env.SCRYPT_LOG_N ??= '10'; // fast password hashing in tests
 
 const request = require('supertest');
 
 const { createApp } = require('../src/app');
-const { createMemoryStore } = require('../src/store/memoryStore');
-const { createPostgresStore } = require('../src/store/postgresStore');
+const { connectStore } = require('../src/store/connect');
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
@@ -19,25 +19,33 @@ const TODAY = '2026-09-15';
 const TIMEZONE = 'America/New_York';
 const PASSWORD = 'correct horse battery';
 
-const pgStores = [];
+const opened = [];
 
 async function makeStore() {
-  if (!TEST_DATABASE_URL) return createMemoryStore();
-  const schema = `test_${process.pid}_${pgStores.length}`;
-  const store = createPostgresStore({ connectionString: TEST_DATABASE_URL, schema });
-  pgStores.push({ store, schema });
+  if (!TEST_DATABASE_URL) return connectStore().store;
+  const name = `smartfocus_test_${process.pid}_${opened.length}`;
+  const { store, kind } = connectStore({ databaseUrl: TEST_DATABASE_URL, name });
+  opened.push({ store, kind, name });
   return store;
 }
 
 if (TEST_DATABASE_URL) {
   require('node:test').after(async () => {
-    const { Pool } = require('pg');
-    const pool = new Pool({ connectionString: TEST_DATABASE_URL });
-    for (const { store, schema } of pgStores) {
-      await store.close();
-      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    for (const { store } of opened) await store.close();
+    if (!opened.length) return;
+    if (opened[0].kind === 'postgres') {
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: TEST_DATABASE_URL });
+      for (const { name } of opened) await pool.query(`DROP SCHEMA IF EXISTS ${name} CASCADE`);
+      await pool.end();
+    } else {
+      const mysql = require('mysql2/promise');
+      const url = new URL(TEST_DATABASE_URL);
+      url.pathname = '';
+      const conn = await mysql.createConnection(url.toString());
+      for (const { name } of opened) await conn.query(`DROP DATABASE IF EXISTS \`${name}\``);
+      await conn.end();
     }
-    await pool.end();
   });
 }
 

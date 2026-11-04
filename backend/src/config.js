@@ -24,9 +24,20 @@ const config = {
   // four weeks of sample data (in the in-memory store).
   demoAccount: flag(process.env.DEMO_ACCOUNT),
 
-  // PostgreSQL connection, e.g. postgres://user:password@host:5432/smartfocus.
-  // Unset: data is kept in memory and lost when the server stops.
+  // Database. Either DATABASE_URL (postgres://… or mysql://…), or MySQL by
+  // parts with DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME (as in the
+  // database-api branch). Neither: data is kept in memory and lost when the
+  // server stops.
   databaseUrl: process.env.DATABASE_URL || null,
+  mysql: process.env.DB_USER
+    ? {
+        host: process.env.DB_HOST || '127.0.0.1',
+        port: Number(process.env.DB_PORT) || 3306,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD ?? '',
+        database: process.env.DB_NAME || 'smartfocus',
+      }
+    : null,
   // Most hosted databases need SSL. DATABASE_SSL=true turns it on without
   // checking the certificate (fine for this project; not for real patient data).
   databaseSsl: flag(process.env.DATABASE_SSL),

@@ -1,10 +1,10 @@
 /**
  * Storage: the boundary between the API and the database.
  *
- * Routes and reports only ever call the methods below. `createPostgresStore()`
- * (./postgresStore.js, tables in ./schema.sql) is used when DATABASE_URL is
- * set; otherwise `createMemoryStore()` keeps everything in memory, which is
- * fine for development and tests but forgotten whenever the server restarts.
+ * Routes and reports only ever call the methods below. ./connect.js picks the
+ * implementation from the settings: ./mysqlStore.js (tables in
+ * ./schema.mysql.sql), ./postgresStore.js (./schema.sql), or ./memoryStore.js,
+ * which is fine for development and tests but forgotten on restart.
  * Another database only needs an object with every method below (all async);
  * the tests exercise the whole contract through the API.
  *

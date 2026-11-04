@@ -2,38 +2,18 @@
  * PostgreSQL implementation of the store (see ./index.js for the contract).
  * Tables are in ./schema.sql and are created on first use.
  */
-const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool, types } = require('pg');
 
 const { EmailTakenError } = require('./index');
+const { newId, toAccount, toSession, toCheckIn, toHealthDay, usageRows, toUsageDays } = require('./rows');
 
 // Return DATE columns as "YYYY-MM-DD" strings, not JS Dates at local midnight.
 types.setTypeParser(types.builtins.DATE, (value) => value);
 
 const SCHEMA_SQL = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 const UNIQUE_VIOLATION = '23505';
-
-const newId = () => randomUUID().replaceAll('-', '');
-
-const toAccount = (row) =>
-  row && { id: row.id, email: row.email, passwordHash: row.password_hash, timezone: row.timezone };
-
-function toCheckIn(row) {
-  const checkIn = {
-    id: row.id,
-    createdAt: row.created_at,
-    mood: row.mood,
-    energy: row.energy,
-    focus: row.focus,
-  };
-  // Optional fields are left out rather than returned as null.
-  if (row.note) checkIn.note = row.note;
-  if (row.kind != null) checkIn.kind = row.kind;
-  if (row.sleep_quality != null) checkIn.sleepQuality = row.sleep_quality;
-  return checkIn;
-}
 
 /**
  * @param {{ connectionString?: string, schema?: string, ssl?: object | boolean }} options
@@ -87,12 +67,12 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
 
     async getAccount(accountId) {
       const { rows } = await query('SELECT * FROM accounts WHERE id = $1', [accountId]);
-      return toAccount(rows[0]) ?? null;
+      return toAccount(rows[0]);
     },
 
     async getAccountByEmail(email) {
       const { rows } = await query('SELECT * FROM accounts WHERE email = $1', [email]);
-      return toAccount(rows[0]) ?? null;
+      return toAccount(rows[0]);
     },
 
     async createAccount({ email, passwordHash, timezone, id = newId() }) {
@@ -128,10 +108,7 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
 
     async getSession(tokenHash) {
       const { rows } = await query('SELECT * FROM sessions WHERE token_hash = $1', [tokenHash]);
-      const row = rows[0];
-      return row
-        ? { tokenHash: row.token_hash, accountId: row.account_id, createdAt: row.created_at, expiresAt: row.expires_at }
-        : null;
+      return toSession(rows[0]);
     },
 
     async deleteSession(tokenHash) {
@@ -177,18 +154,7 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
     },
 
     async replaceUsageDay(accountId, day) {
-      const hours = day.hours.map(({ hour, pickups, notifications }) => ({ hour, pickups, notifications }));
-      const apps = day.hours.flatMap(({ hour, apps: list }) =>
-        list.map((a, position) => ({
-          hour,
-          position,
-          app_id: a.appId,
-          app_name: a.appName,
-          category: a.category,
-          seconds: a.seconds,
-          opens: a.opens,
-        })),
-      );
+      const { hours, apps } = usageRows(day);
       await transaction(async (client) => {
         // Deleting the day cascades to its hours and app rows.
         await client.query('DELETE FROM usage_days WHERE account_id = $1 AND day = $2', [accountId, day.date]);
@@ -223,25 +189,7 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
           params,
         ),
       ]);
-      const byDay = new Map(
-        days.rows.map((row) => [row.day, { date: row.day, longestFocusMinutes: row.longest_focus_minutes, hours: [] }]),
-      );
-      const byHour = new Map();
-      for (const row of hours.rows) {
-        const hour = { hour: row.hour, pickups: row.pickups, notifications: row.notifications, apps: [] };
-        byDay.get(row.day).hours.push(hour);
-        byHour.set(`${row.day} ${row.hour}`, hour);
-      }
-      for (const row of apps.rows) {
-        byHour.get(`${row.day} ${row.hour}`).apps.push({
-          appId: row.app_id,
-          appName: row.app_name,
-          category: row.category,
-          seconds: row.seconds,
-          opens: row.opens,
-        });
-      }
-      return [...byDay.values()];
+      return toUsageDays(days.rows, hours.rows, apps.rows);
     },
 
     async replaceHealthDay(accountId, day) {
@@ -261,13 +209,7 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
         'SELECT * FROM health_days WHERE account_id = $1 AND day BETWEEN $2 AND $3 ORDER BY day',
         [accountId, firstDate, lastDate],
       );
-      return rows.map((row) => ({
-        date: row.day,
-        sleepMinutes: row.sleep_minutes,
-        steps: row.steps,
-        exerciseMinutes: row.exercise_minutes,
-        distanceMeters: row.distance_meters,
-      }));
+      return rows.map(toHealthDay);
     },
   };
 }
