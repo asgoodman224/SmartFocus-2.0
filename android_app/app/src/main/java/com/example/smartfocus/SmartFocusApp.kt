@@ -337,7 +337,8 @@ fun SmartFocusApp(
                     onHealth = ::connectHealth,
                     onNotifications = ::allowNotifications,
                 )
-                Sheet.SignIn -> SignInSheetContent(account.serverUrl) { server, session ->
+                // A build for a study server always offers that server, even if old settings were restored.
+                Sheet.SignIn -> SignInSheetContent(BuildConfig.DEFAULT_SERVER.ifEmpty { account.serverUrl }) { server, session ->
                     account.signIn(server, session.email, session.token)
                     SyncWorker.schedule(context)
                     SyncWorker.syncSoon(context)
