@@ -2,14 +2,27 @@ const { createApp } = require('./app');
 const config = require('./config');
 const { addDemoAccount, EMAIL, PASSWORD } = require('./demoData');
 const { createMemoryStore } = require('./store/memoryStore');
+const { createPostgresStore } = require('./store/postgresStore');
+
+async function makeStore() {
+  if (!config.databaseUrl) {
+    console.warn('DATABASE_URL is not set, so data is kept in memory and lost when the server stops.');
+    return createMemoryStore();
+  }
+  const store = createPostgresStore({
+    connectionString: config.databaseUrl,
+    ssl: config.databaseSsl ? { rejectUnauthorized: false } : undefined,
+  });
+  await store.migrate(); // creates any missing tables
+  console.log('Storing data in PostgreSQL.');
+  return store;
+}
 
 async function main() {
-  // TODO: use the MySQL store once it exists (see src/store/index.js).
-  const store = createMemoryStore();
-  console.warn('Using the in-memory store: data is lost when the server stops.');
+  const store = await makeStore();
 
   if (config.demoAccount) {
-    await addDemoAccount(store);
+    if (!(await store.getAccountByEmail(EMAIL))) await addDemoAccount(store);
     console.log(`Demo account ready: ${EMAIL} / ${PASSWORD}`);
   }
 

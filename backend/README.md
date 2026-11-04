@@ -1,6 +1,6 @@
 # SmartFocus API
 
-The REST API behind the SmartFocus mobile app: Node.js and Express 5, with MySQL planned for storage.
+The REST API behind the SmartFocus mobile app: Node.js and Express 5, storing data in PostgreSQL.
 
 It implements every endpoint the app's `src/services/smartfocusApi.ts` calls, returning the shapes in the app's `src/types/models.ts` (camelCase JSON). Errors come back as `{ "detail": "message" }`, which the app shows to users.
 
@@ -28,13 +28,28 @@ EXPO_PUBLIC_USE_MOCK_DATA=false
 | ------------- | --------------------------------- |
 | `npm run dev` | Run the API, restarting on changes |
 | `npm start`   | Run the API                       |
-| `npm test`    | Run the tests (no database needed) |
+| `npm test`    | Run the tests (no database needed; set `TEST_DATABASE_URL` to also test PostgreSQL) |
 
-## Storage (MySQL)
+## Storage (PostgreSQL)
 
-**Data is kept in memory for now and lost when the server stops.** The database side is being built separately. The API only talks to storage through one interface, described in [`src/store/index.js`](src/store/index.js): accounts, sessions, check-ins, data-source settings and uploaded usage and health days, with the exact shapes and methods.
+Set `DATABASE_URL` in `.env` (for example `postgres://user:password@localhost:5432/smartfocus`, plus `DATABASE_SSL=true` for most hosted databases). On start the API creates any missing tables from [`src/store/schema.sql`](src/store/schema.sql), so an empty database is enough. Without `DATABASE_URL`, data is kept in memory and lost when the server stops.
 
-To connect MySQL, write `createMysqlStore(db)` implementing those methods (e.g. with the `mysql2` connection from `db.js` on the `database-api` branch), use it in `src/server.js`, and point `test/helpers.js:makeStore` at it so the test suite checks it. Nothing else needs to change. The report calculations (summary, charts, focus score) work on the day records the store returns, so the store only saves and loads data.
+Every row belongs to an account (`account_id`, joined to `accounts.email`):
+
+| Table          | One row per |
+| -------------- | ----------- |
+| `accounts`     | Participant (email, time zone) |
+| `sessions`     | Signed-in device (token hash only) |
+| `check_ins`    | Check-in: mood, energy, focus, sleep quality, kind, note, when it happened |
+| `data_sources` | Permission status per participant (app usage, notifications, motion) |
+| `usage_days`   | Local day of phone use (longest focus stretch) |
+| `usage_hours`  | Hour of that day: pickups, notifications |
+| `app_usage`    | App used in that hour: seconds, opens, category |
+| `health_days`  | Local day of health totals: sleep, steps, exercise, distance (NULL means no data) |
+
+The phone re-sends its last few days on every sync, and a re-upload replaces that day's rows.
+
+The API only talks to storage through the interface in [`src/store/index.js`](src/store/index.js). `src/store/postgresStore.js` implements it, and `src/store/memoryStore.js` is the in-memory stand-in. Run the test suite against PostgreSQL with `TEST_DATABASE_URL=postgres://... npm test`; each test uses its own temporary schema.
 
 ## Endpoints
 

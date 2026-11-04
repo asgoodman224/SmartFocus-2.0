@@ -1,15 +1,12 @@
 /**
  * Storage: the boundary between the API and the database.
  *
- * Routes and reports only ever call the methods below, so the database side
- * can be built separately (MySQL via `mysql2`). Until it exists,
- * `createMemoryStore()` keeps everything in memory, which is fine for
- * development and tests but forgotten whenever the server restarts.
- *
- * To plug in MySQL: write `createMysqlStore(db)` returning an object with
- * every method below (all async), and use it in `src/server.js`. Run
- * `npm test` against it by changing `test/helpers.js:makeStore`. The tests
- * exercise the whole contract through the API.
+ * Routes and reports only ever call the methods below. `createPostgresStore()`
+ * (./postgresStore.js, tables in ./schema.sql) is used when DATABASE_URL is
+ * set; otherwise `createMemoryStore()` keeps everything in memory, which is
+ * fine for development and tests but forgotten whenever the server restarts.
+ * Another database only needs an object with every method below (all async);
+ * the tests exercise the whole contract through the API.
  *
  * ---------------------------------------------------------------------------
  * Shapes (JSDoc; dates are "YYYY-MM-DD" strings in the user's local calendar,

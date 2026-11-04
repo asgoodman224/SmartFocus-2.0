@@ -1,6 +1,7 @@
 /**
- * Test setup: a fresh in-memory store per test and a pinned clock.
- * To run the suite against another store (e.g. MySQL), change `makeStore`.
+ * Test setup: a fresh store per test and a pinned clock.
+ * The store is in memory, or PostgreSQL when TEST_DATABASE_URL is set (each
+ * test gets its own empty schema there, dropped when the run ends).
  */
 process.env.SCRYPT_LOG_N ??= '10'; // fast password hashing in tests
 
@@ -8,6 +9,9 @@ const request = require('supertest');
 
 const { createApp } = require('../src/app');
 const { createMemoryStore } = require('../src/store/memoryStore');
+const { createPostgresStore } = require('../src/store/postgresStore');
+
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 // Tuesday, September 15 2026, 12:00 noon in New York (EDT, UTC-4).
 const NOW = new Date('2026-09-15T16:00:00Z');
@@ -15,8 +19,26 @@ const TODAY = '2026-09-15';
 const TIMEZONE = 'America/New_York';
 const PASSWORD = 'correct horse battery';
 
+const pgStores = [];
+
 async function makeStore() {
-  return createMemoryStore();
+  if (!TEST_DATABASE_URL) return createMemoryStore();
+  const schema = `test_${process.pid}_${pgStores.length}`;
+  const store = createPostgresStore({ connectionString: TEST_DATABASE_URL, schema });
+  pgStores.push({ store, schema });
+  return store;
+}
+
+if (TEST_DATABASE_URL) {
+  require('node:test').after(async () => {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: TEST_DATABASE_URL });
+    for (const { store, schema } of pgStores) {
+      await store.close();
+      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    }
+    await pool.end();
+  });
 }
 
 /**

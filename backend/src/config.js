@@ -23,6 +23,13 @@ const config = {
   // Local development only: adds demo@smartfocus.dev / smartfocus-demo with
   // four weeks of sample data (in the in-memory store).
   demoAccount: flag(process.env.DEMO_ACCOUNT),
+
+  // PostgreSQL connection, e.g. postgres://user:password@host:5432/smartfocus.
+  // Unset: data is kept in memory and lost when the server stops.
+  databaseUrl: process.env.DATABASE_URL || null,
+  // Most hosted databases need SSL. DATABASE_SSL=true turns it on without
+  // checking the certificate (fine for this project; not for real patient data).
+  databaseSsl: flag(process.env.DATABASE_SSL),
 };
 
 module.exports = config;
