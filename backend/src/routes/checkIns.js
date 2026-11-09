@@ -1,5 +1,6 @@
 const express = require('express');
 
+const time = require('../time');
 const { HttpError, parse, schemas } = require('../validation');
 
 // How far a phone's clock may run ahead, and how late an offline check-in may arrive.
@@ -27,7 +28,8 @@ module.exports = function checkInRoutes({ store, now, requireAccount }) {
     if (now() - createdAt > MAX_AGE_MS) {
       throw new HttpError(422, 'Check-in time is more than 30 days ago.');
     }
-    res.status(201).json(await store.createCheckIn(req.account.id, { ...fields, createdAt }));
+    const localDay = time.localToday(req.account.timezone, createdAt);
+    res.status(201).json(await store.createCheckIn(req.account.id, { ...fields, createdAt, localDay }));
   });
 
   return router;

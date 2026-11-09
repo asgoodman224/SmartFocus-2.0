@@ -49,8 +49,19 @@
  *   One local day of health data from the phone. Every value is a
  *   non-negative integer, or null when the phone had no data for it (keep
  *   null distinct from 0). `sleepMinutes` and `exerciseMinutes` are 0–1440;
- *   `distanceMeters` is whole meters. Uploading a date again replaces the
- *   whole record, nulls included.
+ *   `distanceMeters` is whole meters. `sleepStart` and `sleepEnd` (Dates or
+ *   null) are bedtime and wake time of the night's main sleep. Uploading a
+ *   date again replaces the whole record, nulls included.
+ *
+ * @typedef {{ date: string, score: number | null, body: number | null, mind: number | null, digital: number | null }} WellnessDay
+ *   The wellness score (0–100) the app showed that day, and its parts.
+ *
+ * @typedef {{
+ *   installId: string, platform: 'android' | 'ios', manufacturer: string | null,
+ *   model: string | null, osVersion: string | null, appVersion: string | null,
+ *   firstSeenAt: Date, lastSeenAt: Date
+ * }} Device
+ *   The phone a participant uses. `lastSeenAt` is the last sync.
  *
  * ---------------------------------------------------------------------------
  * Methods (all return Promises)
@@ -68,8 +79,9 @@
  *   deleteSession(tokenHash)                   → void   (missing is not an error)
  *
  * Check-ins
- *   createCheckIn(accountId, { createdAt, mood, energy, focus, note?, kind?, sleepQuality? })
- *       → CheckIn (generates the id; optional fields may be undefined)
+ *   createCheckIn(accountId, { createdAt, localDay, mood, energy, focus, note?, kind?, sleepQuality? })
+ *       → CheckIn (generates the id; optional fields may be undefined; `localDay`
+ *       is the participant's "YYYY-MM-DD", stored for analysis and not returned)
  *   listCheckIns(accountId, limit)             → CheckIn[]  newest createdAt first
  *   listCheckInsBetween(accountId, start, end) → CheckIn[]  createdAt in [start, end)
  *
@@ -84,6 +96,15 @@
  * Health
  *   replaceHealthDay(accountId, day)           → void   (day: HealthDay; replaces that date)
  *   getHealthDays(accountId, firstDate, lastDate) → HealthDay[]  dates in [first, last], any order
+ *
+ * Wellness
+ *   replaceWellnessDay(accountId, day)         → void   (day: WellnessDay; replaces that date)
+ *   getWellnessDays(accountId, firstDate, lastDate) → WellnessDay[]
+ *
+ * Devices
+ *   saveDevice(accountId, { installId, platform, manufacturer?, model?, osVersion?, appVersion? })
+ *       → void (adds the device or updates it, and sets lastSeenAt to now)
+ *   listDevices(accountId)                     → Device[]  most recently seen first
  *
  * Every per-user record belongs to the account id.
  */

@@ -8,7 +8,7 @@ const path = require('node:path');
 const mysql = require('mysql2/promise');
 
 const { EmailTakenError } = require('./index');
-const { newId, toAccount, toSession, toCheckIn, toHealthDay, usageRows, toUsageDays } = require('./rows');
+const { newId, toAccount, toSession, toCheckIn, toHealthDay, toWellnessDay, toDevice, usageRows, toUsageDays } = require('./rows');
 
 const SCHEMA_STATEMENTS = fs
   .readFileSync(path.join(__dirname, 'schema.mysql.sql'), 'utf8')
@@ -40,7 +40,14 @@ function createMysqlStore(options) {
       try {
         await conn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4`);
         await conn.query(`USE \`${database}\``);
-        for (const statement of SCHEMA_STATEMENTS) await conn.query(statement);
+        for (const statement of SCHEMA_STATEMENTS) {
+          try {
+            await conn.query(statement);
+          } catch (err) {
+            // ALTER TABLE … ADD COLUMN on a database that already has it.
+            if (err.code !== 'ER_DUP_FIELDNAME') throw err;
+          }
+        }
       } finally {
         await conn.end();
       }
@@ -127,12 +134,12 @@ function createMysqlStore(options) {
       await query('DELETE FROM sessions WHERE token_hash = ?', [tokenHash]);
     },
 
-    async createCheckIn(accountId, { createdAt, mood, energy, focus, note, kind, sleepQuality }) {
+    async createCheckIn(accountId, { createdAt, localDay, mood, energy, focus, note, kind, sleepQuality }) {
       const id = newId();
       await query(
-        `INSERT INTO check_ins (id, account_id, created_at, mood, energy, focus, note, kind, sleep_quality)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, accountId, createdAt, mood, energy, focus, note || null, kind ?? null, sleepQuality ?? null],
+        `INSERT INTO check_ins (id, account_id, created_at, local_day, mood, energy, focus, note, kind, sleep_quality)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, accountId, createdAt, localDay ?? null, mood, energy, focus, note || null, kind ?? null, sleepQuality ?? null],
       );
       return toCheckIn((await query('SELECT * FROM check_ins WHERE id = ?', [id]))[0]);
     },
@@ -208,13 +215,24 @@ function createMysqlStore(options) {
 
     async replaceHealthDay(accountId, day) {
       await query(
-        `INSERT INTO health_days (account_id, day, sleep_minutes, steps, exercise_minutes, distance_meters)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO health_days
+           (account_id, day, sleep_minutes, sleep_start, sleep_end, steps, exercise_minutes, distance_meters)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
-           sleep_minutes = VALUES(sleep_minutes), steps = VALUES(steps),
+           sleep_minutes = VALUES(sleep_minutes), sleep_start = VALUES(sleep_start), sleep_end = VALUES(sleep_end),
+           steps = VALUES(steps),
            exercise_minutes = VALUES(exercise_minutes), distance_meters = VALUES(distance_meters),
            uploaded_at = CURRENT_TIMESTAMP(3)`,
-        [accountId, day.date, day.sleepMinutes, day.steps, day.exerciseMinutes, day.distanceMeters],
+        [
+          accountId,
+          day.date,
+          day.sleepMinutes,
+          day.sleepStart ?? null,
+          day.sleepEnd ?? null,
+          day.steps,
+          day.exerciseMinutes,
+          day.distanceMeters,
+        ],
       );
     },
 
@@ -225,6 +243,39 @@ function createMysqlStore(options) {
         lastDate,
       ]);
       return rows.map(toHealthDay);
+    },
+
+    async replaceWellnessDay(accountId, { date, score, body, mind, digital }) {
+      await query(
+        `INSERT INTO wellness_days (account_id, day, score, body, mind, digital) VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE score = VALUES(score), body = VALUES(body), mind = VALUES(mind),
+           digital = VALUES(digital), uploaded_at = CURRENT_TIMESTAMP(3)`,
+        [accountId, date, score, body, mind, digital],
+      );
+    },
+
+    async getWellnessDays(accountId, firstDate, lastDate) {
+      const rows = await query(
+        'SELECT * FROM wellness_days WHERE account_id = ? AND day BETWEEN ? AND ? ORDER BY day',
+        [accountId, firstDate, lastDate],
+      );
+      return rows.map(toWellnessDay);
+    },
+
+    async saveDevice(accountId, { installId, platform, manufacturer, model, osVersion, appVersion }) {
+      await query(
+        `INSERT INTO devices (account_id, install_id, platform, manufacturer, model, os_version, app_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE platform = VALUES(platform), manufacturer = VALUES(manufacturer),
+           model = VALUES(model), os_version = VALUES(os_version), app_version = VALUES(app_version),
+           last_seen_at = CURRENT_TIMESTAMP(3)`,
+        [accountId, installId, platform, manufacturer ?? null, model ?? null, osVersion ?? null, appVersion ?? null],
+      );
+    },
+
+    async listDevices(accountId) {
+      const rows = await query('SELECT * FROM devices WHERE account_id = ? ORDER BY last_seen_at DESC', [accountId]);
+      return rows.map(toDevice);
     },
   };
 }

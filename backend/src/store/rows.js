@@ -24,9 +24,30 @@ function toCheckIn(row) {
 const toHealthDay = (row) => ({
   date: row.day,
   sleepMinutes: row.sleep_minutes,
+  sleepStart: row.sleep_start ?? null,
+  sleepEnd: row.sleep_end ?? null,
   steps: row.steps,
   exerciseMinutes: row.exercise_minutes,
   distanceMeters: row.distance_meters,
+});
+
+const toWellnessDay = (row) => ({
+  date: row.day,
+  score: row.score,
+  body: row.body,
+  mind: row.mind,
+  digital: row.digital,
+});
+
+const toDevice = (row) => ({
+  installId: row.install_id,
+  platform: row.platform,
+  manufacturer: row.manufacturer,
+  model: row.model,
+  osVersion: row.os_version,
+  appVersion: row.app_version,
+  firstSeenAt: row.first_seen_at,
+  lastSeenAt: row.last_seen_at,
 });
 
 /** A UsageDay's hour and app rows, in upload order. */
@@ -69,4 +90,4 @@ function toUsageDays(dayRows, hourRows, appRows) {
   return [...byDay.values()];
 }
 
-module.exports = { newId, toAccount, toSession, toCheckIn, toHealthDay, usageRows, toUsageDays };
+module.exports = { newId, toAccount, toSession, toCheckIn, toHealthDay, toWellnessDay, toDevice, usageRows, toUsageDays };

@@ -55,9 +55,30 @@ Every row belongs to an account (`account_id`, joined to `accounts.email`):
 | `usage_days`   | Local day of phone use (longest focus stretch) |
 | `usage_hours`  | Hour of that day: pickups, notifications |
 | `app_usage`    | App used in that hour: seconds, opens, category |
-| `health_days`  | Local day of health totals: sleep, steps, exercise, distance (NULL means no data) |
+| `health_days`  | Local day of health totals: sleep (minutes, bedtime, wake time), steps, exercise, distance (NULL means no data) |
+| `wellness_days` | Local day: the wellness score (0–100) the app showed, and its body, mind and digital parts |
+| `devices`      | Participant's phone: model, OS and app version, first and last sync |
 
-The phone re-sends its last few days on every sync, and a re-upload replaces that day's rows.
+The phone re-sends its last week on every sync, and a re-upload replaces that day's rows. Check-ins also store `local_day`, the participant's calendar day.
+
+Two views are made for analysis and are rebuilt on every start:
+
+| View            | One row per |
+| --------------- | ----------- |
+| `daily_summary` | Participant and local day with any data: screen, social and app counts, pickups, notifications, longest focus, sleep, steps, exercise, distance, check-in count and average ratings, wellness score. Export it as CSV from Beekeeper for statistics. |
+| `participants`  | Participant: sign-up time, last sync, phone, app version, how many days of each kind of data, first and last day. Use it to spot who has stopped syncing. |
+
+Timestamps are UTC; join `accounts.timezone` to convert bedtimes to local time.
+
+## Hosting on Railway
+
+The study server runs on [Railway](https://railway.com) with its MySQL database, so it stays up around the clock at a fixed address.
+
+1. In a Railway project, add **Database → MySQL** and a service for this repo with **Root Directory** `/backend` and **Config File** `/backend/railway.json` (start command, `/health` check, restarts).
+2. On the service, set `DATABASE_URL` to `${{MySQL.MYSQL_URL}}` and `PORT` to `8080`, then **Settings → Networking → Generate Domain** on port 8080.
+3. Deploys run on every push to the service's branch. The tables and views are created on start.
+
+To browse the data in Beekeeper, open the MySQL service's **Connect** tab and use the public host, port, user and password it shows (database `railway`).
 
 The API only talks to storage through the interface in [`src/store/index.js`](src/store/index.js). `src/store/mysqlStore.js` and `src/store/postgresStore.js` implement it, and `src/store/memoryStore.js` is the in-memory stand-in. Run the test suite against a database with `TEST_DATABASE_URL=mysql://user:password@host:3306/x npm test` (or `postgres://...`); each test uses its own temporary database or schema.
 
@@ -83,6 +104,8 @@ Everything except sign-up, sign-in and `/health` needs `Authorization: Bearer <t
 | PUT    | `/v1/usage/days/{date}`     | Phone uploads a day of usage (Android app) |
 | GET    | `/v1/health/daily?days=7`   | Sleep, steps, exercise and distance per day      |
 | PUT    | `/v1/health/days/{date}`    | Phone uploads a day of health data               |
+| PUT    | `/v1/wellness/days/{date}`  | Phone uploads the day's wellness score: `{score, body, mind, digital}`, each 0–100 or `null` |
+| PUT    | `/v1/me/device`             | Phone reports itself on each sync: `{installId, platform, manufacturer?, model?, osVersion?, appVersion?}` |
 | GET    | `/health`                   | Liveness check                                   |
 
 ### Usage uploads
@@ -127,8 +150,11 @@ The phone sends health data one local calendar day at a time. Every field is opt
 
 ```json
 PUT /v1/health/days/2026-09-15
-{ "sleepMinutes": 450, "steps": 8200, "exerciseMinutes": 35, "distanceMeters": 6100 }
+{ "sleepMinutes": 450, "sleepStart": "2026-09-14T23:20:00-04:00", "sleepEnd": "2026-09-15T07:10:00-04:00",
+  "steps": 8200, "exerciseMinutes": 35, "distanceMeters": 6100 }
 ```
+
+`sleepStart` and `sleepEnd` are bedtime and wake time of the night's main sleep, with an offset. They are stored but not returned by `GET /v1/health/daily`.
 
 All values are whole numbers: `sleepMinutes` and `exerciseMinutes` 0–1440, `steps` and `distanceMeters` (meters) 0 or more. Like usage, an upload **replaces** that day completely (204), and future dates are refused.
 
@@ -161,7 +187,7 @@ test/                node:test + supertest; "now" is pinned so dates are predict
 
 ## Things to know
 
-- **Sign-in.** Passwords are hashed with scrypt. Tokens are random, and only their SHA-256 is stored, so signing out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. There's no rate limiting yet; add it before going public.
+- **Sign-in.** Passwords are hashed with scrypt. Tokens are random, and only their SHA-256 is stored, so signing out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. Sign-up and sign-in are limited to 10 tries per email per 15 minutes from one address (300 per address), in memory, so a restart resets the counts.
 - **Time zones.** The app sends the phone's time zone at sign-up and sign-in. Usage and health data are stored by the user's *local* date (usage also by hour); check-ins are timestamps grouped by the account's time zone.
 - **Partial days.** Today's screen time and pickups are compared with the *same hours* of the previous 7 days, not their full totals.
 - **Missing days** are skipped, not treated as zero, in averages and the focus trend.

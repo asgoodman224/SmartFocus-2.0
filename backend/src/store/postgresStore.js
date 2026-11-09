@@ -7,7 +7,7 @@ const path = require('node:path');
 const { Pool, types } = require('pg');
 
 const { EmailTakenError } = require('./index');
-const { newId, toAccount, toSession, toCheckIn, toHealthDay, usageRows, toUsageDays } = require('./rows');
+const { newId, toAccount, toSession, toCheckIn, toHealthDay, toWellnessDay, toDevice, usageRows, toUsageDays } = require('./rows');
 
 // Return DATE columns as "YYYY-MM-DD" strings, not JS Dates at local midnight.
 types.setTypeParser(types.builtins.DATE, (value) => value);
@@ -115,11 +115,11 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
       await query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);
     },
 
-    async createCheckIn(accountId, { createdAt, mood, energy, focus, note, kind, sleepQuality }) {
+    async createCheckIn(accountId, { createdAt, localDay, mood, energy, focus, note, kind, sleepQuality }) {
       const { rows } = await query(
-        `INSERT INTO check_ins (id, account_id, created_at, mood, energy, focus, note, kind, sleep_quality)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [newId(), accountId, createdAt, mood, energy, focus, note || null, kind ?? null, sleepQuality ?? null],
+        `INSERT INTO check_ins (id, account_id, created_at, local_day, mood, energy, focus, note, kind, sleep_quality)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [newId(), accountId, createdAt, localDay ?? null, mood, energy, focus, note || null, kind ?? null, sleepQuality ?? null],
       );
       return toCheckIn(rows[0]);
     },
@@ -194,13 +194,24 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
 
     async replaceHealthDay(accountId, day) {
       await query(
-        `INSERT INTO health_days (account_id, day, sleep_minutes, steps, exercise_minutes, distance_meters)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO health_days
+           (account_id, day, sleep_minutes, sleep_start, sleep_end, steps, exercise_minutes, distance_meters)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (account_id, day) DO UPDATE SET
-           sleep_minutes = EXCLUDED.sleep_minutes, steps = EXCLUDED.steps,
+           sleep_minutes = EXCLUDED.sleep_minutes, sleep_start = EXCLUDED.sleep_start, sleep_end = EXCLUDED.sleep_end,
+           steps = EXCLUDED.steps,
            exercise_minutes = EXCLUDED.exercise_minutes, distance_meters = EXCLUDED.distance_meters,
            uploaded_at = now()`,
-        [accountId, day.date, day.sleepMinutes, day.steps, day.exerciseMinutes, day.distanceMeters],
+        [
+          accountId,
+          day.date,
+          day.sleepMinutes,
+          day.sleepStart ?? null,
+          day.sleepEnd ?? null,
+          day.steps,
+          day.exerciseMinutes,
+          day.distanceMeters,
+        ],
       );
     },
 
@@ -210,6 +221,39 @@ function createPostgresStore({ connectionString, schema, ssl } = {}) {
         [accountId, firstDate, lastDate],
       );
       return rows.map(toHealthDay);
+    },
+
+    async replaceWellnessDay(accountId, { date, score, body, mind, digital }) {
+      await query(
+        `INSERT INTO wellness_days (account_id, day, score, body, mind, digital) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (account_id, day) DO UPDATE SET score = EXCLUDED.score, body = EXCLUDED.body,
+           mind = EXCLUDED.mind, digital = EXCLUDED.digital, uploaded_at = now()`,
+        [accountId, date, score, body, mind, digital],
+      );
+    },
+
+    async getWellnessDays(accountId, firstDate, lastDate) {
+      const { rows } = await query(
+        'SELECT * FROM wellness_days WHERE account_id = $1 AND day BETWEEN $2 AND $3 ORDER BY day',
+        [accountId, firstDate, lastDate],
+      );
+      return rows.map(toWellnessDay);
+    },
+
+    async saveDevice(accountId, { installId, platform, manufacturer, model, osVersion, appVersion }) {
+      await query(
+        `INSERT INTO devices (account_id, install_id, platform, manufacturer, model, os_version, app_version)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (account_id, install_id) DO UPDATE SET platform = EXCLUDED.platform,
+           manufacturer = EXCLUDED.manufacturer, model = EXCLUDED.model, os_version = EXCLUDED.os_version,
+           app_version = EXCLUDED.app_version, last_seen_at = now()`,
+        [accountId, installId, platform, manufacturer ?? null, model ?? null, osVersion ?? null, appVersion ?? null],
+      );
+    },
+
+    async listDevices(accountId) {
+      const { rows } = await query('SELECT * FROM devices WHERE account_id = $1 ORDER BY last_seen_at DESC', [accountId]);
+      return rows.map(toDevice);
     },
   };
 }

@@ -19,8 +19,19 @@ async function main() {
     console.log(`Demo account ready: ${EMAIL} / ${PASSWORD}`);
   }
 
-  createApp({ store }).listen(config.port, () => {
+  const server = createApp({ store }).listen(config.port, () => {
     console.log(`SmartFocus API running on port ${config.port}`);
+  });
+
+  // Hosts stop the old server with SIGTERM when deploying a new one: finish
+  // the requests in flight, then close the database connections.
+  process.once('SIGTERM', () => {
+    console.log('Shutting down.');
+    server.close(async () => {
+      await store.close?.();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 10_000).unref();
   });
 }
 

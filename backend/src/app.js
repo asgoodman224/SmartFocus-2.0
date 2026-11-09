@@ -9,6 +9,7 @@ const dataSourceRoutes = require('./routes/dataSources');
 const healthRoutes = require('./routes/health');
 const insightRoutes = require('./routes/insights');
 const usageRoutes = require('./routes/usage');
+const wellnessRoutes = require('./routes/wellness');
 
 /**
  * Builds the Express app.
@@ -20,6 +21,8 @@ const usageRoutes = require('./routes/usage');
 function createApp({ store, now = () => new Date() }) {
   const app = express();
   app.disable('x-powered-by');
+  // Behind one proxy on Railway (and Cloudflare tunnels): req.ip is the phone's address.
+  app.set('trust proxy', 1);
   app.use(cors(config.corsOrigins));
   app.use(express.json({ limit: '1mb' }));
 
@@ -38,6 +41,7 @@ function createApp({ store, now = () => new Date() }) {
   app.use('/v1/check-ins', checkInRoutes(deps));
   app.use('/v1/data-sources', dataSourceRoutes(deps));
   app.use('/v1/health', healthRoutes(deps));
+  app.use('/v1/wellness', wellnessRoutes(deps));
 
   app.use((req, res) => res.status(404).json({ detail: 'Not found.' }));
 

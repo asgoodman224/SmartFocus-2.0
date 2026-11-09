@@ -17,6 +17,8 @@ function createMemoryStore() {
   const dataSources = new Map(); // accountId → { sourceId: status }
   const usageDays = new Map(); // accountId → Map(date → UsageDay)
   const healthDays = new Map(); // accountId → Map(date → HealthDay)
+  const wellnessDays = new Map(); // accountId → Map(date → WellnessDay)
+  const devices = new Map(); // accountId → Map(installId → Device)
 
   const listFor = (map, accountId, empty) => {
     if (!map.has(accountId)) map.set(accountId, empty());
@@ -62,7 +64,8 @@ function createMemoryStore() {
     },
 
     async createCheckIn(accountId, fields) {
-      const checkIn = { id: newId(), ...fields };
+      const { localDay, ...rest } = fields; // stored for analysis only, never returned
+      const checkIn = { id: newId(), ...rest };
       // Optional fields are left out rather than stored as empty.
       if (!checkIn.note) delete checkIn.note;
       if (checkIn.kind == null) delete checkIn.kind;
@@ -99,12 +102,34 @@ function createMemoryStore() {
     },
 
     async replaceHealthDay(accountId, day) {
-      listFor(healthDays, accountId, () => new Map()).set(day.date, copy(day));
+      listFor(healthDays, accountId, () => new Map()).set(day.date, copy({ sleepStart: null, sleepEnd: null, ...day }));
     },
 
     async getHealthDays(accountId, firstDate, lastDate) {
       const days = listFor(healthDays, accountId, () => new Map());
       return copy([...days.values()].filter((d) => d.date >= firstDate && d.date <= lastDate));
+    },
+
+    async replaceWellnessDay(accountId, day) {
+      listFor(wellnessDays, accountId, () => new Map()).set(day.date, copy(day));
+    },
+
+    async getWellnessDays(accountId, firstDate, lastDate) {
+      const days = listFor(wellnessDays, accountId, () => new Map());
+      return copy([...days.values()].filter((d) => d.date >= firstDate && d.date <= lastDate));
+    },
+
+    async saveDevice(accountId, device) {
+      const list = listFor(devices, accountId, () => new Map());
+      const now = new Date();
+      const firstSeenAt = list.get(device.installId)?.firstSeenAt ?? now;
+      const blank = { manufacturer: null, model: null, osVersion: null, appVersion: null };
+      list.set(device.installId, { ...blank, ...copy(device), firstSeenAt, lastSeenAt: now });
+    },
+
+    async listDevices(accountId) {
+      const list = listFor(devices, accountId, () => new Map());
+      return copy([...list.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt));
     },
   };
 }

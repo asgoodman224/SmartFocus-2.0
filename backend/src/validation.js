@@ -38,6 +38,11 @@ const rating = int(1, 5);
 const optional = (schema) => schema.nullish().transform((value) => value ?? undefined);
 // Health values are null when the phone has no data for that day.
 const healthValue = (min, max) => int(min, max).nullish().transform((value) => value ?? null);
+const score = int(0, 100).nullish().transform((value) => value ?? null);
+const optionalText = (max) => z.string().trim().max(max).nullish().transform((value) => value || null);
+const timestamp = z.iso
+  .datetime({ offset: true, message: 'must be an ISO 8601 date-time with an offset, e.g. 2026-09-15T08:30:00-04:00' })
+  .transform((iso) => new Date(iso));
 
 const schemas = {
   signUp: z.object({ email, password: z.string().min(8).max(128), timezone }),
@@ -75,9 +80,27 @@ const schemas = {
 
   healthDayUpload: z.object({
     sleepMinutes: healthValue(0, 1440),
+    sleepStart: timestamp.nullish().transform((value) => value ?? null),
+    sleepEnd: timestamp.nullish().transform((value) => value ?? null),
     steps: healthValue(0),
     exerciseMinutes: healthValue(0, 1440),
     distanceMeters: healthValue(0),
+  }),
+
+  wellnessDayUpload: z.object({
+    score: score,
+    body: score,
+    mind: score,
+    digital: score,
+  }),
+
+  deviceUpdate: z.object({
+    installId: z.string().min(8).max(64),
+    platform: z.enum(['android', 'ios']),
+    manufacturer: optionalText(64),
+    model: optionalText(64),
+    osVersion: optionalText(32),
+    appVersion: optionalText(32),
   }),
 
   usageDayUpload: z.object({
