@@ -40,6 +40,14 @@ class Api(private val baseUrl: String, private val token: String? = null) {
         request("PUT", "/v1/health/days/$date", body)
     }
 
+    suspend fun putWellnessDay(date: String, body: JSONObject) {
+        request("PUT", "/v1/wellness/days/$date", body)
+    }
+
+    suspend fun putDevice(body: JSONObject) {
+        request("PUT", "/v1/me/device", body)
+    }
+
     suspend fun putDataSource(id: String, status: String) {
         request("PUT", "/v1/data-sources/$id", JSONObject().put("status", status))
     }
@@ -82,7 +90,8 @@ class Api(private val baseUrl: String, private val token: String? = null) {
 
     private fun friendly(e: IOException): String = when (e) {
         is ConnectException, is SocketTimeoutException, is UnknownHostException ->
-            "Can't reach $baseUrl. Check the server is running and the phone is on the same Wi-Fi."
+            if (baseUrl.startsWith("https://")) "Can't reach $baseUrl. Check the phone is online."
+            else "Can't reach $baseUrl. Check the server is running and the phone is on the same Wi-Fi."
         else -> e.message ?: "Couldn't reach the server."
     }
 }

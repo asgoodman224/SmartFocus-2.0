@@ -127,5 +127,20 @@ class DashboardTest {
         assertEquals(420, health.getInt("sleepMinutes"))
         assertTrue(health.isNull("steps"))
         assertEquals(1234, health.getLong("distanceMeters"))
+        assertTrue(health.isNull("sleepStart"))
+    }
+
+    @Test fun sleepTimesAndWellnessUploads() {
+        val ny = ZoneId.of("America/New_York")
+        val bed = java.time.Instant.parse("2026-09-15T03:10:00Z")
+        val health = Sync.healthJson(HealthDay(today, sleepStart = bed, sleepEnd = bed.plusSeconds(7 * 3600)), ny)
+        // Seconds are always included: the server refuses "23:10-04:00".
+        assertEquals("2026-09-14T23:10:00-04:00", health.getString("sleepStart"))
+        assertEquals("2026-09-15T06:10:00-04:00", health.getString("sleepEnd"))
+
+        val wellness = Sync.wellnessJson(com.example.smartfocus.data.Wellness(body = 60, mind = null, digital = 80))
+        assertTrue(wellness.isNull("score"))
+        assertTrue(wellness.isNull("mind"))
+        assertEquals(60, wellness.getInt("body"))
     }
 }

@@ -26,6 +26,11 @@ class Account(context: Context) {
         private set
 
     val token: String? get() = prefs.getString("token", null)
+
+    /** A random id for this install, so the study can tell phones apart. Survives signing out. */
+    val installId: String
+        get() = prefs.getString("install_id", null)
+            ?: java.util.UUID.randomUUID().toString().also { prefs.edit().putString("install_id", it).commit() }
     val signedIn: Boolean get() = email != null && token != null
 
     // Another instance (e.g. the sync worker) changed something: show it.
