@@ -11,14 +11,15 @@ const publicAccount = ({ id, email, timezone }) => ({ id, email, timezone });
 module.exports = function authRoutes({ store, now, requireAccount, bearerToken }) {
   const router = express.Router();
 
-  // Slows down password guessing. Per email from one address, plus a looser
-  // limit per address (a whole class may share a campus network's address).
+  // Slows down password guessing: per email, plus a looser limit per address
+  // (a whole class may share a campus network's address). Railway's edge puts
+  // the phone's address in X-Real-IP; req.ip there is one of its own servers.
   const WINDOW_MS = 15 * 60 * 1000;
   const perEmail = rateLimiter({ limit: 10, windowMs: WINDOW_MS });
   const perAddress = rateLimiter({ limit: 300, windowMs: WINDOW_MS });
   const limit = (req, email) => {
-    perAddress(req.ip, now());
-    perEmail(`${req.ip} ${email}`, now());
+    perAddress(req.get('x-real-ip') || req.ip, now());
+    perEmail(email, now());
   };
 
   router.post('/auth/sign-up', async (req, res) => {

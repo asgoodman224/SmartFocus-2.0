@@ -187,7 +187,7 @@ test/                node:test + supertest; "now" is pinned so dates are predict
 
 ## Things to know
 
-- **Sign-in.** Passwords are hashed with scrypt. Tokens are random, and only their SHA-256 is stored, so signing out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. Sign-up and sign-in are limited to 10 tries per email per 15 minutes from one address (300 per address), in memory, so a restart resets the counts.
+- **Sign-in.** Passwords are hashed with scrypt. Tokens are random, and only their SHA-256 is stored, so signing out takes effect immediately. Sessions last `SESSION_DAYS` (90). Sign-in errors don't reveal whether an email is registered. Sign-up and sign-in are limited to 10 tries per email and 300 per network address every 15 minutes, in memory, so a restart resets the counts.
 - **Time zones.** The app sends the phone's time zone at sign-up and sign-in. Usage and health data are stored by the user's *local* date (usage also by hour); check-ins are timestamps grouped by the account's time zone.
 - **Partial days.** Today's screen time and pickups are compared with the *same hours* of the previous 7 days, not their full totals.
 - **Missing days** are skipped, not treated as zero, in averages and the focus trend.

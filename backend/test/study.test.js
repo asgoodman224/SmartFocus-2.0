@@ -81,7 +81,7 @@ test('device reports need an install id and a known platform', async () => {
   assert.equal((await client.put('/v1/me/device', { ...DEVICE, platform: 'windows' })).status, 422);
 });
 
-test('sign-in is refused after 10 tries for one email from one address', async () => {
+test('sign-in is refused after 10 tries for one email', async () => {
   const client = await makeClient();
   await client.signUp('kim@example.com');
   for (let i = 0; i < 9; i++) {
